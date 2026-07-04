@@ -54,15 +54,15 @@ func main() {
 
 	// GET /healthz -- a create 'readiness endpoint' for Chirpy server.
 	// Motivation: Readiness endpoints are commonly used by external systems to check if our server is ready to receive traffic.
-	serverMux.HandleFunc("GET /healthz", apiCfg.handlerHealth) // Later this endpoint can be enhanced to return a 503 Service Unavailable status code if the server is not ready.
+	serverMux.HandleFunc("GET /api/healthz", apiCfg.handlerHealth) // Later this endpoint can be enhanced to return a 503 Service Unavailable status code if the server is not ready.
 	// --------------------------------------------------------
 	// GET /metrics -- how many people are viewing the site (until server is turned off)
 	// motivation: // how many requests are being made to serve our homepage - in essence, they want to know
-	serverMux.HandleFunc("GET /metrics", apiCfg.handlerMetrics) // return the count as plain text in the response body.
+	serverMux.HandleFunc("GET /admin/metrics", apiCfg.handlerMetrics) // return the count as plain text in the response body.
 	// --------------------------------------------------------
 
 	// GET /metrics -- reset to '0' many people are viewing the site!
-	serverMux.HandleFunc("POST /reset", apiCfg.handlerReset)
+	serverMux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
 	// --------------------------------------------------------
 
 	server := http.Server{
@@ -104,15 +104,24 @@ func (cfg *apiConfig) handlerHealth(w http.ResponseWriter, req *http.Request) {
 
 func (cfg *apiConfig) handlerMetrics(w http.ResponseWriter, req *http.Request) {
 	// Header:
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 
 	// Status Code: Send HTTP 200/ok
 	w.WriteHeader(http.StatusOK)
 
-	// Send 'Hits: <cfg.fileserverHits>' in response body
-	count := fmt.Sprintf("Hits: %v", cfg.fileserverHits.Load()) // convert int[32] into a string
-	if _, err := w.Write([]byte(count)); err != nil {
+	// Respone body
+	hits := cfg.fileserverHits.Load()
+	body := fmt.Sprintf(
+		`<html>
+  <body>
+    <h1>Welcome, Chirpy Admin</h1>
+    <p>Chirpy has been visited %d times!</p>
+  </body>
+</html>`, hits)
+
+	// Send count 'cfg.fileserverHits.Load()' in response body. Be sure to convert into []byte slice.
+	if _, err := w.Write([]byte(body)); err != nil {
 		log.Fatal(err)
 	}
 }
