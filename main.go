@@ -1,12 +1,22 @@
 package main
 
+import "github.com/joho/godotenv"
+
+// import "github.com/google/uuid"
+
 import (
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync/atomic"
+
+	"database/sql"
+
+	_ "github.com/lib/pq"
+	"github.com/zeelna/chirpy/internal/database"
 )
 
 const (
@@ -17,6 +27,7 @@ const (
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
+	db             *database.Queries
 }
 
 // Heplful Go doc links:
@@ -27,8 +38,21 @@ type apiConfig struct {
 //https://pkg.go.dev/net/http#ResponseWriter.Write
 
 func main() {
+	// #1 cmd: go get github.com/joho/godotenv
+	// instead, I added into go.mod
+
+	// IMPORTANT: load the .env into your environment
+	godotenv.Load()
+	dbURL := os.Getenv("DB_URL")
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Fatalf("Error opening database: %s", err)
+	}
+	dbQueries := database.New(db)
+
 	apiCfg := &apiConfig{
 		fileserverHits: atomic.Int32{},
+		db:             dbQueries,
 	}
 	// --------------------------------------------------------
 	// We have many handlers, we don't want potential conflicts with the fileserver handler.
