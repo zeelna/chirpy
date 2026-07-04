@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync/atomic"
 )
 
@@ -173,9 +174,10 @@ func (cfg *apiConfig) handlerValidateChirp(w http.ResponseWriter, req *http.Requ
 		_respondWithError(w, http.StatusBadRequest, "Chirp cannot be empty")
 	} else {
 		type respParams struct {
-			Valid bool `json:"valid"`
+			CleanedBody string `json:"cleaned_body"`
 		}
-		_respondWithJSON(w, http.StatusOK, respParams{Valid: true})
+		cleaned := replaceProfaneWords(reqParams.Body)
+		_respondWithJSON(w, http.StatusOK, respParams{CleanedBody: cleaned})
 	}
 	return
 	// -- end of happy path --
@@ -188,6 +190,26 @@ func (cfg *apiConfig) handlerValidateChirp(w http.ResponseWriter, req *http.Requ
 // 1. curl http://localhost:8080/
 // 2. curl http://localhost:8080/assets/logo.png
 //  curl -X POST "http://localhost:8080/api/validate_chirp" -H "Content-Type: application/json" -d '{"chirp":"hello"}'
+
+func replaceProfaneWords(msg string) string {
+	// words to replace
+	profanities := map[string]struct{}{
+		"kerfuffle": {},
+		"sharbert":  {},
+		"fornax":    {},
+	} // map[string]struct{} is an efficient set: keys are the words you want to replace, and the value is an empty struct{} since you don’t need any extra data.
+	// An alternative would be a []string and looping to find a match, but that’s O(n) per word instead of constant-time
+
+	words := strings.Fields(msg) // splits on whitespace; punctuation stays attached
+	for i := range words {
+		// lowercase for matching; punctuation will prevent an exact match (e.g., "Sharbert!" won't match "sharbert")
+		w := strings.ToLower(words[i])
+		if _, ok := profanities[w]; ok {
+			words[i] = "****"
+		}
+	}
+	return strings.Join(words, " ")
+}
 
 func _respondWithError(w http.ResponseWriter, statusCode int, msg string) {
 	// Create JSON Response body type
