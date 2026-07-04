@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -28,9 +29,7 @@ func main() {
 	apiCfg := &apiConfig{
 		fileserverHits: atomic.Int32{},
 	}
-
 	// --------------------------------------------------------
-
 	// We have many handlers, we don't want potential conflicts with the fileserver handler.
 	// Updated the fileserver to use the /app/ path instead of /.
 	// Not only will you need to mux.Handle the /app/ path,
@@ -63,6 +62,10 @@ func main() {
 
 	// GET /metrics -- reset to '0' many people are viewing the site!
 	serverMux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
+	// --------------------------------------------------------
+
+	// GET /metrics -- reset to '0' many people are viewing the site!
+	serverMux.HandleFunc("POST /api/validate_chirp", apiCfg.handlerValidateChirp)
 	// --------------------------------------------------------
 
 	server := http.Server{
@@ -143,11 +146,74 @@ func (cfg *apiConfig) handlerReset(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func (cfg *apiConfig) handlerValidateChirp(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	type reqParameters struct {
+		Body string `json:"body"`
+	}
+	// Decode JSON Request Body
+	decoder := json.NewDecoder(req.Body)
+	reqParams := reqParameters{}
+	errorEncoding := decoder.Decode(&reqParams)
+	// -- bad path --
+	if errorEncoding != nil {
+		log.Printf("Error decoding parameters: %s", errorEncoding)
+		_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+	// -- end of bad path --
+
+	// -- start of happy path --
+	// Validate Chirp length is less than or equal to 140 characters.
+	if len(reqParams.Body) > 140 {
+		_respondWithError(w, http.StatusBadRequest, "Chirp is too long")
+	} else if len(reqParams.Body) <= 0 {
+		_respondWithError(w, http.StatusBadRequest, "Chirp cannot be empty")
+	} else {
+		type respParams struct {
+			Valid bool `json:"valid"`
+		}
+		_respondWithJSON(w, http.StatusOK, respParams{Valid: true})
+	}
+	return
+	// -- end of happy path --
+}
+
 // you can compile a binary and run server (in the background):
 // go build -o out && ./out
 // note: Ctrl + C terminates the server.
 
-// Test
 // 1. curl http://localhost:8080/
 // 2. curl http://localhost:8080/assets/logo.png
-//
+//  curl -X POST "http://localhost:8080/api/validate_chirp" -H "Content-Type: application/json" -d '{"chirp":"hello"}'
+
+func _respondWithError(w http.ResponseWriter, statusCode int, msg string) {
+	// Create JSON Response body type
+	type ErrorVals struct {
+		Error string `json:"error"`
+	}
+	_respondWithJSON(w, statusCode, ErrorVals{Error: msg})
+}
+
+func _respondWithJSON(w http.ResponseWriter, statusCode int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	// Encode JSON Response body
+	data, errorMarshalling := json.Marshal(payload)
+
+	// Sad path.
+	if errorMarshalling != nil {
+		log.Printf("Error marshalling HTTP Response JSON: %s", errorMarshalling)
+		http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+		return
+	}
+	// Happy path.
+	w.WriteHeader(statusCode)
+	if _, err := w.Write(data); err != nil {
+		log.Printf("Error writing HTTP response: %v", err)
+		http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+		return
+	}
+	return
+}
