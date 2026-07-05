@@ -38,15 +38,10 @@ type apiConfig struct {
 }
 
 // Heplful Go doc links:
-// // https://pkg.go.dev/net/http#ServeMux.Handle
-// type Handler: https://pkg.go.dev/net/http#Handler
-
+// https://pkg.go.dev/net/http#ServeMux.Handle
+// https://pkg.go.dev/net/http#Handler
 // https://pkg.go.dev/net/http#ResponseWriter
 //https://pkg.go.dev/net/http#ResponseWriter.Write
-
-// you can compile a binary and run server (in the background):
-// go build -o out && ./out
-// note: Ctrl + C terminates the server.
 
 // 1. curl http://localhost:8080/
 // 2. curl http://localhost:8080/assets/logo.png
@@ -67,6 +62,9 @@ type ChirpResponse struct {
 	UserID    uuid.UUID `json:"user_id"`
 }
 
+// you can compile a binary and run server (in the background):
+// go build -o out && ./out
+// note: Ctrl + C terminates the server.
 func main() {
 	// #1 cmd: go get github.com/joho/godotenv
 	// instead, I added into go.mod
@@ -129,7 +127,8 @@ func main() {
 	// POST /api/users  -- add a new users with HTTP Request Body {'email': 'abc@xyz.com'}
 	serverMux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
 
-	// GET /api/users  -- retrieve ID of user via HTTP Request Body {'email': 'abc@xyz.com'}
+	// GET /api/users with JSON-body {'email': 'xyz'}
+	//-- retrieve ID of user via HTTP Request Body {'email': 'abc@xyz.com'}
 	serverMux.HandleFunc("GET /api/users/", apiCfg.handlerGetUserByEmail)
 
 	// POST /api/chirps
@@ -340,15 +339,6 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, req *http.Reques
 		return
 	}
 	// -- end of bad path --
-
-	// Verify req's user_id exists -> ${value} into value
-	//stripped := reqParams.UserID[2 : len(reqParams.UserID)-1]
-	//parsedID, err := uuid.Parse(reqParams.UserID)
-	//if err != nil {
-	//	_respondWithError(w, http.StatusBadRequest, "Parse fail. User does not exist")
-	//	return
-	//}
-
 	user, err := cfg.db.GetUser(req.Context(), reqParams.UserID)
 	if err != nil {
 		_respondWithError(w, http.StatusBadRequest, "User does not exist")
@@ -445,44 +435,7 @@ func (cfg *apiConfig) handlerGetChirp(w http.ResponseWriter, req *http.Request) 
 	// -- end of happy path --
 }
 
-/*
-func (cfg *apiConfig) handlerValidateChirp(w http.ResponseWriter, req *http.Request) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
-
-	type reqParameters struct {
-		Body string `json:"body"`
-	}
-	// Decode JSON Request Body
-	decoder := json.NewDecoder(req.Body)
-	reqParams := reqParameters{}
-	errorEncoding := decoder.Decode(&reqParams)
-	// -- bad path --
-	if errorEncoding != nil {
-		log.Printf("Error decoding parameters: %s", errorEncoding)
-		_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
-		return
-	}
-	// -- end of bad path --
-
-	// -- start of happy path --
-	// Validate Chirp length is less than or equal to 140 characters.
-	if len(reqParams.Body) > 140 {
-		_respondWithError(w, http.StatusBadRequest, "Chirp is too long")
-	} else if len(reqParams.Body) <= 0 {
-		_respondWithError(w, http.StatusBadRequest, "Chirp cannot be empty")
-	} else {
-		type respParams struct {
-			CleanedBody string `json:"cleaned_body"`
-		}
-		cleaned := replaceProfaneWords(reqParams.Body)
-		_respondWithJSON(w, http.StatusOK, respParams{CleanedBody: cleaned})
-	}
-	return
-	// -- end of happy path --
-}
-*/
-
+// Censoring feature to avoid profanities, when calling HTTP Request -> POST /api/chirp
 func replaceProfaneWords(msg string) string {
 	// words to replace
 	profanities := map[string]struct{}{
@@ -503,6 +456,7 @@ func replaceProfaneWords(msg string) string {
 	return strings.Join(words, " ")
 }
 
+// Helper functions to Marshal HTTP Response into JSON body
 func _respondWithError(w http.ResponseWriter, statusCode int, msg string) {
 	// Create JSON Response body type
 	type ErrorVals struct {
