@@ -104,7 +104,7 @@ func main() {
 	serverMux.HandleFunc("POST /api/validate_chirp", apiCfg.handlerValidateChirp)
 
 	// GET /metrics -- reset to '0' many people are viewing the site!
-	serverMux.HandleFunc("POST /api/users", apiCfg.handlerAddUser)
+	serverMux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
 	// --------------------------------------------------------
 
 	server := http.Server{
@@ -185,7 +185,7 @@ func (cfg *apiConfig) handlerReset(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (cfg *apiConfig) handlerAddUser(w http.ResponseWriter, req *http.Request) {
+func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, req *http.Request) {
 	type reqParameters struct {
 		Email string `json:"email"`
 	}
