@@ -2,6 +2,7 @@ package auth
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -74,4 +75,16 @@ func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 		return uuid.Nil, err
 	}
 	return uuid.Parse(id)
+}
+
+// When the user wants to make a request to the API, they send the token along with the request in the HTTP headers.
+// The server can then verify that the token is valid, which means the user is who they say they are.
+func GetBearerToken(headers http.Header) (string, error) {
+	bearer := headers.Get("Authorization")
+	isEmptyBearer := len(strings.Trim(bearer, "")) == 0
+	if isEmptyBearer {
+		return "", fmt.Errorf("Authorization incomplete due to no Bearer token found")
+	}
+	tokenString := strings.TrimPrefix(bearer, "Bearer ")
+	return tokenString, nil
 }
