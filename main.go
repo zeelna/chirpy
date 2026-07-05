@@ -36,6 +36,7 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 	db             *database.Queries
 	platform       string
+	jwtSecretKey   string
 }
 
 // Heplful Go doc links:
@@ -47,6 +48,14 @@ type apiConfig struct {
 // 1. curl http://localhost:8080/
 // 2. curl http://localhost:8080/assets/logo.png
 //  curl -X POST "http://localhost:8080/api/validate_chirp" -H "Content-Type: application/json" -d '{"chirp":"hello"}'
+
+type LoginResponse struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
+	JwtToken  string    `json:"token"`
+}
 
 type UserResponse struct {
 	ID        uuid.UUID `json:"id"`
@@ -79,6 +88,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error opening database: %s", err)
 	}
+
+	// Load the JWT secre
+	jwtSecretKey := os.Getenv("JWT_SIGNING_KEY")
+
 	// #2 use SQLC generated 'database' package to create a new <*database.Queries> and store into apiConfig struct
 	// so that handlers can access it
 	dbQueries := database.New(db)
@@ -88,6 +101,7 @@ func main() {
 		fileserverHits: atomic.Int32{},
 		db:             dbQueries,
 		platform:       os.Getenv("PLATFORM"),
+		jwtSecretKey:   jwtSecretKey,
 	}
 	// os.Getenv("PLATFORM") -> reading value of key 'PLATFORM' from .env into apiConfig struct
 
@@ -244,9 +258,11 @@ func (cfg *apiConfig) handlerReset(w http.ResponseWriter, req *http.Request) {
 
 func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, req *http.Request) {
 	type reqParameters struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Email            string `json:"email"`
+		Password         string `json:"password"`
+		ExpiresInSeconds int    `json:"expires_in_seconds"`
 	}
+
 	// Decode JSON Request Body
 	decoder := json.NewDecoder(req.Body)
 	reqParams := reqParameters{}
@@ -257,6 +273,15 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, req *http.Request) {
 		_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 		return
 	}
+
+	// ----convert {'expires_in_seconds': 1} to time.Duration() ----
+	// If it's specified by the client, use it as the expiration time. If it's not specified, use a default expiration time of 1 hour. If the client specified a number over 1 hour, use 1 hour as the expiration time.
+	if reqParams.ExpiresInSeconds == 0 || reqParams.ExpiresInSeconds > 3600 { // 0 seconds
+		reqParams.ExpiresInSeconds = 3600
+	}
+	// time.Duration() by default is using 'nanoseconds'. Here is conversion
+	expiresIn := time.Duration(reqParams.ExpiresInSeconds) * time.Second
+	// --------------------------------------------------------------
 
 	// -- Database operation -> SELECT * FROM users WHERE email = ...;
 	// Searching a 'user' entry in 'users' table via HTTP Request body {'email': '<any_value>'}
@@ -272,12 +297,19 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	jwtToken, err := auth.MakeJWT(user.ID, cfg.jwtSecretKey, expiresIn)
+	if err != nil {
+		_respondWithError(w, http.StatusUnauthorized, fmt.Sprintf("%v", err))
+		return
+	}
+
 	// -- happy path -- Once successfully received from db, write into JSON for HTTP Response Body.
-	_respondWithJSON(w, http.StatusOK, UserResponse{
+	_respondWithJSON(w, http.StatusOK, LoginResponse{
 		ID:        user.ID,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 		Email:     user.Email,
+		JwtToken:  jwtToken,
 	})
 	return
 }
@@ -373,8 +405,7 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, req *http.Reques
 	w.Header().Set("Cache-Control", "no-cache")
 
 	type reqParameters struct {
-		Body   string    `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
+		Body string `json:"body"`
 	}
 
 	// Decode JSON Request Body
@@ -387,6 +418,28 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, req *http.Reques
 		_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 		return
 	}
+	// ----- Authorization ---------------------------------
+	// Authorization: To creat a new 'Chirp' you must be logged-in, that is:
+	// + Authorization: Bearer <token>
+	tokenString, err := auth.GetBearerToken(req.Header)
+	if err != nil {
+		_respondWithError(w, http.StatusUnauthorized, fmt.Sprintf("%v", err))
+		return
+	}
+	//Verify JWT string is correct
+	tokenSecret := cfg.jwtSecretKey
+	uuidFromJWT, err := auth.ValidateJWT(tokenString, tokenSecret)
+	if err != nil {
+		_respondWithError(w, http.StatusUnauthorized, "Authorization unsuccessful. Invalid JWT or secret")
+		return
+	}
+	// ---end of Authorization --------------------------------------
+	user, err := cfg.db.GetUser(req.Context(), uuidFromJWT)
+	if err != nil {
+		_respondWithError(w, http.StatusBadRequest, "User does not exist")
+		return
+	}
+
 	// Validate Chirp length is less than or equal to 140 characters.
 	if len(reqParams.Body) > 140 {
 		_respondWithError(w, http.StatusBadRequest, "Chirp is too long")
@@ -396,11 +449,7 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, req *http.Reques
 		return
 	}
 	// -- end of bad path --
-	user, err := cfg.db.GetUser(req.Context(), reqParams.UserID)
-	if err != nil {
-		_respondWithError(w, http.StatusBadRequest, "User does not exist")
-		return
-	}
+
 
 	// -- start of happy path --
 	// Work with response body parameters
