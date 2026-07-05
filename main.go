@@ -1,6 +1,11 @@
 package main
 
-import "github.com/joho/godotenv"
+import (
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/joho/godotenv"
+)
 
 // import "github.com/google/uuid"
 
@@ -97,6 +102,9 @@ func main() {
 
 	// GET /metrics -- reset to '0' many people are viewing the site!
 	serverMux.HandleFunc("POST /api/validate_chirp", apiCfg.handlerValidateChirp)
+
+	// GET /metrics -- reset to '0' many people are viewing the site!
+	serverMux.HandleFunc("POST /api/users", apiCfg.handlerAddUser)
 	// --------------------------------------------------------
 
 	server := http.Server{
@@ -175,6 +183,51 @@ func (cfg *apiConfig) handlerReset(w http.ResponseWriter, req *http.Request) {
 	if _, err := w.Write([]byte("OK")); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func (cfg *apiConfig) handlerAddUser(w http.ResponseWriter, req *http.Request) {
+	type reqParameters struct {
+		Email string `json:"email"`
+	}
+	// Decode JSON Request Body
+	decoder := json.NewDecoder(req.Body)
+	reqParams := reqParameters{}
+	errorEncoding := decoder.Decode(&reqParams)
+	// -- bad path --
+	if errorEncoding != nil {
+		log.Printf("Error decoding parameters: %s", errorEncoding)
+		_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	// Every http.Request has a context. With this, database work is tied to the lifetime of the HTTP Request.
+	ctx := req.Context() // You'll also see context.Background() in Go code.
+	// For web handlers, prefer r.Context(). It carries the cancellation signal for the specific request you're handling.
+	// It's useful when a Context is expected but there's no incoming request or parent operation to start from – like in startup code or a background job.
+
+	// Your SQLC method expects a context.Context as its first argument. In an HTTP handler, use the request context from r.Context().
+	user, err := cfg.db.CreateUser(ctx, reqParams.Email)
+	if err != nil {
+		_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	// happy path
+	type respParameters struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email     string    `json:"email"`
+	}
+	respParams := respParameters{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email:     user.Email,
+	}
+
+	_respondWithJSON(w, http.StatusCreated, respParams)
+	return
 }
 
 func (cfg *apiConfig) handlerValidateChirp(w http.ResponseWriter, req *http.Request) {
