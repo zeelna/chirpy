@@ -1,0 +1,125 @@
+POST /api/validate_chirp
+--------------------------------------------
+#1 Expected ->: {"error":"Chirp is too long"}
+
+curl -X POST "http://localhost:8080/api/validate_chirp" -H "Content-Type: applicat{on/json" -d '{
+  "body": "lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
+}'
+
+#2 Expected -> {{"error":"Something went wrong"}
+curl -X POST "http://localhost:8080/api/validate_chirp" -H "Content-Type: application/json" -d '{"chirp":"}'
+
+#3 Expected -> {"valid": true}
+curl -X POST "http://localhost:8080/api/validate_chirp" -H "Content-Type: application/json" -d '{"body": "I had something interesting for breakfast"}'
+
+-------------------------------------------
+#1 Expected -> { "cleaned_body": "This is a **** opinion I need to share with the world" }
+curl -X POST "http://localhost:8080/api/validate_chirp" -H "Content-Type: application/json" -d '{"body": "This is a kerfuffle opinion I need to share with the world"}'
+
+
+#2 Expected -> {"cleaned_body":"I had something interesting for breakfast"}
+curl -X POST "http://localhost:8080/api/validate_chirp" -H "Content-Type: application/json" -d '{"body":"I had something interesting for breakfast"}'
+
+#3 Expected -> {"cleaned_body":"I hear Mastodon is better than Chirpy. **** I need to migrate"}
+curl -X POST "http://localhost:8080/api/validate_chirp" -H "Content-Type: application/json" -d '{"body": "I hear Mastodon is better than Chirpy. sharbert I need to migrate", "extra": "this should be ignored"}'
+
+#4 Expected -> http status code 400
+curl -X POST "http://localhost:8080/api/validate_chirp" -H "Content-Type: application/json" -d '{"body": "lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."}'
+
+#5 Expected -> http status code 200; {"cleaned_body": "I really need a **** to go to bed sooner, **** !"}
+curl -X POST "http://localhost:8080/api/validate_chirp" -H "Content-Type: application/json" -d '{"body": "I really need a kerfuffle to go to bed sooner, Fornax !"}'
+
+--- POST api/users --------------------------
+# { "email": "broken }
+#6 Expected -> {"error":"Something went wrong"} HTTP 500 ServerInternal Error,
+curl -X POST "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{"email": "broken}'
+
+# { "email": }
+#7 Expected -> {"error":"Something went wrong"} HTTP 500 ServerInternal Error,
+curl -X POST "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{"email": }'
+
+# { "email": "" }
+#8 Expected -> {"error":"Something went wrong"} HTTP 500 ServerInternal Error,
+curl -X POST "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{"email": ""}'
+
+# { "email": "" }
+#9 Expected -> duplicate (email in db schema forced to be UNIQUE)
+# {"error":"Something went wrong"} HTTP 500 ServerInternal Error,
+curl -X POST "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{"email": ""}'
+
+# { "email": "anybody" }
+#10 Expected -> http status code 200
+curl -X POST "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{"email": "anybody"}'
+
+#  { "email": "mloneusk@example.co" }
+#11 Expected -> http status code 200
+curl -X POST "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{"email": "mloneusk@example.co"}'
+
+# { "email": "dackjorsey@example.co" }
+#12 Expected -> http status code 200
+curl -X POST "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{"email": "dackjorsey@example.co"}'
+
+#----------------------------------------------
+
+#---- POST /admin/reset -----------------------
+#13 Expected -> OK in HTML, http status code 200
+curl -X POST "http://localhost:8080/admin/reset"
+
+#14 # in .env, change 'PLATFORM' to anything else than 'dev'
+# Expected -> HTTP 403 Forbidden.
+curl -X POST "http://localhost:8080/admin/reset"
+#----------------------------------------------
+
+--- POST api/users to succeed with POST /api/chirps ---
+
+# Create Saul with email -> '{ "email": "saul@bettercall.com"}'
+#15 Expected -> OK in HTML, http status code 200
+curl -X POST -i "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{ "email": "saul@bettercall.com"}'
+
+# Get Saul's ID by their email -> '{"email": "saul@bettercall.com"}'
+#16  Expected ->  # OK in HTML, http status code 200
+####  {"user_id":"8fcb85c2-dd66-4fe6-8028-c9d42060b389"}
+
+curl -X GET -i  "http://localhost:8080/api/users/" -H "Content-Type: application/json" -d '{"email": "saul@bettercall.com"}'
+
+# Verify with 'psql <db-connection-string' and SELECT * FROM users;
+
+#---- POST /api/chirps  -----------------------
+#17
+curl -X POST -i "http://localhost:8080/api/chirps" \
+  -H "Content-Type: application/json" \
+  -d '{"body":"If you'\''re committed enough, you can make any story work.","user_id":"8fcb85c2-dd66-4fe6-8028-c9d42060b389"}'
+
+# outcome:
+{"body":"If you're committed enough, you can make any story work.","user_id":"8fcb85c2-dd66-4fe6-8028-c9d42060b389"}
+# Verify with 'psql <db-connection-string' and SELECT * FROM chirps;
+
+#18
+curl -X POST -i "http://localhost:8080/api/chirps" \
+  -H "Content-Type: application/json" \
+  -d \
+'{"body": "This is a kerfuffle opinion I need to share with the world" ,"user_id":"ed0acc53-8513-49f4-99dd-c2ed84f2a371"}'
+
+#19
+
+#---- GET /api/users -----------------------
+#  { "email": "mloneusk@example.co" }
+#20 Expected -> http status code 200
+curl -X GET -i  "http://localhost:8080/api/users/" -H "Content-Type: application/json" -d '{"email": "mloneusk@example.co"}'
+
+# { "email": "dackjorsey@example.co" }
+#21 Expected -> http status code 200
+curl -X GET -i  "http://localhost:8080/api/users/" -H "Content-Type: application/json" -d '{"email": "dackjorsey@example.co"}'
+
+#22 {"email": "any"} Expected -> HTTP 400 Bad Request
+curl -X GET -i "http://localhost:8080/api/users/" -H "Content-Type: application/json" -d '{"email": "any"}'
+
+#23 {"email": "} Expected -> HTTP
+curl -X GET -i "http://localhost:8080/api/users/" -H "Content-Type: application/json" -d '{"email": "}'
+#----------------------------------------------
+
+# ----- GET /api/chirps ----------
+curl -X GET -i  "http://localhost:8080/api/chirps"
+
+
+curl -X GET -i  "http://localhost:8080/api/chirps/1b61b905-b0da-496f-a019-08c32e9db857"
