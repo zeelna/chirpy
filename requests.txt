@@ -117,3 +117,9 @@ curl -X GET -i "http://localhost:8080/api/users/" -H "Content-Type: application/
 #23 {"email": "} Expected -> HTTP
 curl -X GET -i "http://localhost:8080/api/users/" -H "Content-Type: application/json" -d '{"email": "}'
 #----------------------------------------------
+
+# ----- GET /api/chirps ----------
+curl -X GET -i  "http://localhost:8080/api/chirps"
+
+
+curl -X GET -i  "http://localhost:8080/api/chirps/c48d8f89-52a0-4a1f-91a4-260398746d6a"

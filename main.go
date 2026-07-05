@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,7 +16,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
 	"sync/atomic"
 
 	"database/sql"
@@ -51,6 +51,21 @@ type apiConfig struct {
 // 1. curl http://localhost:8080/
 // 2. curl http://localhost:8080/assets/logo.png
 //  curl -X POST "http://localhost:8080/api/validate_chirp" -H "Content-Type: application/json" -d '{"chirp":"hello"}'
+
+type UserResponse struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
+}
+
+type ChirpResponse struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Body      string    `json:"body"`
+	UserID    uuid.UUID `json:"user_id"`
+}
 
 func main() {
 	// #1 cmd: go get github.com/joho/godotenv
@@ -121,6 +136,12 @@ func main() {
 	// ported logic into 'handlerCreateChrip' and delete duplicate this validate handler
 	//serverMux.HandleFunc("POST /api/validate_chirp", apiCfg.handlerValidateChirp)
 	serverMux.HandleFunc("POST /api/chirps", apiCfg.handlerCreateChirp)
+
+	// GET /api/chirps
+	serverMux.HandleFunc("GET /api/chirps", apiCfg.handlerGetAllChirps)
+
+	// GET /api/chirp with UUID
+	serverMux.HandleFunc("GET /api/chirps/{id}", apiCfg.handlerGetChirp)
 	// --------------------------------------------------------
 
 	server := http.Server{
@@ -245,20 +266,12 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	// happy path
-	type respParameters struct {
-		ID        uuid.UUID `json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Email     string    `json:"email"`
-	}
-	respParams := respParameters{
+	respParams := UserResponse{
 		ID:        user.ID,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 		Email:     user.Email,
 	}
-
 	_respondWithJSON(w, http.StatusCreated, respParams)
 	return
 }
@@ -366,6 +379,69 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, req *http.Reques
 		UserID: user.ID,
 	}
 	_respondWithJSON(w, http.StatusCreated, resp)
+	return
+	// -- end of happy path --
+}
+
+func (cfg *apiConfig) handlerGetAllChirps(w http.ResponseWriter, req *http.Request) {
+	// Headers
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	// Database operation to extract the all 'chirp' entries from table 'chirps'
+	chirps, err := cfg.db.GetAllChirps(req.Context())
+	// sad path
+	if err != nil {
+		_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	// -- happy path --
+	// HTTP Response JSON Body must be snake-cased {'updated_at': ...}
+	// therefore, we cannot simply use []Chirp from SQLC generated file 'chirps.sql.go'
+	// if that wouldn't be the case, we could call fn; _respondWithJSON(w, http.StatusOK, chrips)
+	responses := []ChirpResponse{}
+	for _, chirp := range chirps {
+		responses = append(responses, ChirpResponse{
+			ID:        chirp.ID,
+			CreatedAt: chirp.CreatedAt,
+			UpdatedAt: chirp.UpdatedAt,
+			Body:      chirp.Body,
+			UserID:    chirp.UserID,
+		})
+	}
+	_respondWithJSON(w, http.StatusOK, responses)
+	return
+}
+
+func (cfg *apiConfig) handlerGetChirp(w http.ResponseWriter, req *http.Request) {
+	// Headers
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	// GET /api/chirps/{id} into uuid.UUID type
+	idString := req.PathValue("id")
+	uuidValue, err := uuid.Parse(idString)
+	//  -- HTTP Request PathVariable "id" failed to convert into Google's UUID failed --
+	if err != nil {
+		_respondWithError(w, http.StatusNotFound, "Chirp does not exist.")
+		return
+	}
+
+	// Database operation to extract the 'chrip' entry from table 'chirps'
+	chirp, err := cfg.db.GetChirp(req.Context(), uuidValue)
+	if err != nil {
+		_respondWithError(w, http.StatusNotFound, "Chirp does not exist.")
+		return
+	}
+	// Happy path
+	_respondWithJSON(w, http.StatusOK, ChirpResponse{
+		ID:        chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:      chirp.Body,
+		UserID:    chirp.UserID,
+	})
 	return
 	// -- end of happy path --
 }
