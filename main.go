@@ -100,10 +100,10 @@ func main() {
 	serverMux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
 	// --------------------------------------------------------
 
-	// GET /metrics -- reset to '0' many people are viewing the site!
+	// POST /api/validate_chirp -- send HTTP Request body {'body': 'xyz'}
 	serverMux.HandleFunc("POST /api/validate_chirp", apiCfg.handlerValidateChirp)
 
-	// GET /metrics -- reset to '0' many people are viewing the site!
+	// POST /api/users  -- add a new users with HTTP Request Body {'email': 'abc@xyz.com'}
 	serverMux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
 	// --------------------------------------------------------
 
