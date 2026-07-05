@@ -29,3 +29,43 @@ curl -X POST "http://localhost:8080/api/validate_chirp" -H "Content-Type: applic
 #5 Expected -> http status code 200; {"cleaned_body": "I really need a **** to go to bed sooner, **** !"}
 curl -X POST "http://localhost:8080/api/validate_chirp" -H "Content-Type: application/json" -d '{"body": "I really need a kerfuffle to go to bed sooner, Fornax !"}'
 
+--- POST api/users --------------------------
+# { "email": "broken }
+#6 Expected -> {"error":"Something went wrong"} HTTP 500 ServerInternal Error,
+curl -X POST "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{"email": "broken}'
+
+# { "email": }
+#7 Expected -> {"error":"Something went wrong"} HTTP 500 ServerInternal Error,
+curl -X POST "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{"email": }'
+
+# { "email": "" }
+#8 Expected -> {"error":"Something went wrong"} HTTP 500 ServerInternal Error,
+curl -X POST "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{"email": ""}'
+
+# { "email": "" }
+#9 Expected -> duplicate (email in db schema forced to be UNIQUE)
+# {"error":"Something went wrong"} HTTP 500 ServerInternal Error,
+curl -X POST "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{"email": ""}'
+
+# { "email": "anybody" }
+#10 Expected -> http status code 200
+curl -X POST "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{"email": "anybody"}'
+
+#  { "email": "mloneusk@example.co" }
+#11 Expected -> http status code 200
+curl -X POST "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{"email": "mloneusk@example.co"}'
+
+# { "email": "dackjorsey@example.co" }
+#12 Expected -> http status code 200
+curl -X POST "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{"email": "dackjorsey@example.co"}'
+
+#----------------------------------------------
+
+#---- POST /admin/reset -----------------------
+#13 Expected -> OK in HTML, http status code 200
+curl -X POST "http://localhost:8080/admin/reset"
+
+#14 # in .env, change 'PLATFORM' to anything else than 'dev'
+# Expected -> HTTP 403 Forbidden.
+curl -X POST "http://localhost:8080/admin/reset"
+#----------------------------------------------

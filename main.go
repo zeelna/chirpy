@@ -28,11 +28,13 @@ const (
 	project_root_path = "/"
 	current_directory = "."
 	port              = "8080"
+	platformDev       = "dev"
 )
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	db             *database.Queries
+	platform       string
 }
 
 // Heplful Go doc links:
@@ -41,6 +43,14 @@ type apiConfig struct {
 
 // https://pkg.go.dev/net/http#ResponseWriter
 //https://pkg.go.dev/net/http#ResponseWriter.Write
+
+// you can compile a binary and run server (in the background):
+// go build -o out && ./out
+// note: Ctrl + C terminates the server.
+
+// 1. curl http://localhost:8080/
+// 2. curl http://localhost:8080/assets/logo.png
+//  curl -X POST "http://localhost:8080/api/validate_chirp" -H "Content-Type: application/json" -d '{"chirp":"hello"}'
 
 func main() {
 	// #1 cmd: go get github.com/joho/godotenv
@@ -63,7 +73,9 @@ func main() {
 	apiCfg := &apiConfig{
 		fileserverHits: atomic.Int32{},
 		db:             dbQueries,
+		platform:       os.Getenv("PLATFORM"),
 	}
+	// os.Getenv("PLATFORM") -> reading value of key 'PLATFORM' from .env into apiConfig struct
 
 	// --------------------------------------------------------
 	// We have many handlers, we don't want potential conflicts with the fileserver handler.
@@ -169,13 +181,30 @@ func (cfg *apiConfig) handlerMetrics(w http.ResponseWriter, req *http.Request) {
 }
 
 func (cfg *apiConfig) handlerReset(w http.ResponseWriter, req *http.Request) {
-	// reset the count of visits to the server
-	cfg.fileserverHits.Store(0)
-
-	// Header:
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	// Headers:
+	w.Header().Set("Content-Type", "plain/text; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 
+	// ensures that this extremely dangerous endpoint can be accessed only in a local development environment.
+	if cfg.platform != platformDev {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	// reset the count of visits to the server (render to HTML)
+	cfg.fileserverHits.Store(0)
+
+	// Reset the entire 'users' table to empty (keeping schema)
+	if err := cfg.db.DeleteAllUsers(req.Context()); err != nil {
+		log.Printf("Error deleting all users: %v", err)
+		if _, err := w.Write([]byte("Failed to delete")); err != nil {
+			log.Fatal(err)
+		}
+		//_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	// -- happy path --
 	// Status Code: Send HTTP 200/ok
 	w.WriteHeader(http.StatusOK)
 
@@ -265,14 +294,6 @@ func (cfg *apiConfig) handlerValidateChirp(w http.ResponseWriter, req *http.Requ
 	return
 	// -- end of happy path --
 }
-
-// you can compile a binary and run server (in the background):
-// go build -o out && ./out
-// note: Ctrl + C terminates the server.
-
-// 1. curl http://localhost:8080/
-// 2. curl http://localhost:8080/assets/logo.png
-//  curl -X POST "http://localhost:8080/api/validate_chirp" -H "Content-Type: application/json" -d '{"chirp":"hello"}'
 
 func replaceProfaneWords(msg string) string {
 	// words to replace
