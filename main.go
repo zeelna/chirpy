@@ -274,11 +274,14 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// ----convert {'expires_in_seconds': 1} to time.Duration() ----
 	// If it's specified by the client, use it as the expiration time. If it's not specified, use a default expiration time of 1 hour. If the client specified a number over 1 hour, use 1 hour as the expiration time.
 	if reqParams.ExpiresInSeconds == 0 || reqParams.ExpiresInSeconds > 3600 { // 0 seconds
-		reqParams.ExpiresInSeconds = 3600 // 1 hour
+		reqParams.ExpiresInSeconds = 3600
 	}
-	expiresIn := time.Duration(reqParams.ExpiresInSeconds)
+	// time.Duration() by default is using 'nanoseconds'. Here is conversion
+	expiresIn := time.Duration(reqParams.ExpiresInSeconds) * time.Second
+	// --------------------------------------------------------------
 
 	// -- Database operation -> SELECT * FROM users WHERE email = ...;
 	// Searching a 'user' entry in 'users' table via HTTP Request body {'email': '<any_value>'}
@@ -402,8 +405,7 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, req *http.Reques
 	w.Header().Set("Cache-Control", "no-cache")
 
 	type reqParameters struct {
-		Body   string    `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
+		Body string `json:"body"`
 	}
 
 	// Decode JSON Request Body
@@ -431,12 +433,12 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, req *http.Reques
 		_respondWithError(w, http.StatusUnauthorized, "Authorization unsuccessful. Invalid JWT or secret")
 		return
 	}
-	// Verify that JWT's corresponding userID is equal of HTTP Request Body's {'user_id': <xyz>}
-	if uuidFromJWT != reqParams.UserID {
-		_respondWithError(w, http.StatusUnauthorized, "Authorization halted. JWT injection attempted")
+	// ---end of Authorization --------------------------------------
+	user, err := cfg.db.GetUser(req.Context(), uuidFromJWT)
+	if err != nil {
+		_respondWithError(w, http.StatusBadRequest, "User does not exist")
 		return
 	}
-	// ---end of Authorization --------------------------------------
 
 	// Validate Chirp length is less than or equal to 140 characters.
 	if len(reqParams.Body) > 140 {
@@ -447,11 +449,7 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, req *http.Reques
 		return
 	}
 	// -- end of bad path --
-	user, err := cfg.db.GetUser(req.Context(), reqParams.UserID)
-	if err != nil {
-		_respondWithError(w, http.StatusBadRequest, "User does not exist")
-		return
-	}
+
 
 	// -- start of happy path --
 	// Work with response body parameters
