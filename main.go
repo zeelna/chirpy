@@ -111,12 +111,16 @@ func main() {
 	// GET /metrics -- reset to '0' many people are viewing the site!
 	serverMux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
 	// --------------------------------------------------------
-
-	// POST /api/validate_chirp -- send HTTP Request body {'body': 'xyz'}
-	serverMux.HandleFunc("POST /api/validate_chirp", apiCfg.handlerValidateChirp)
-
 	// POST /api/users  -- add a new users with HTTP Request Body {'email': 'abc@xyz.com'}
 	serverMux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
+
+	// GET /api/users  -- retrieve ID of user via HTTP Request Body {'email': 'abc@xyz.com'}
+	serverMux.HandleFunc("GET /api/users/", apiCfg.handlerGetUserByEmail)
+
+	// POST /api/chirps
+	// ported logic into 'handlerCreateChrip' and delete duplicate this validate handler
+	//serverMux.HandleFunc("POST /api/validate_chirp", apiCfg.handlerValidateChirp)
+	serverMux.HandleFunc("POST /api/chirps", apiCfg.handlerCreateChirp)
 	// --------------------------------------------------------
 
 	server := http.Server{
@@ -259,6 +263,114 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, req *http.Request
 	return
 }
 
+func (cfg *apiConfig) handlerGetUserByEmail(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	// Type define the struct
+	type reqParameters struct {
+		Email string `json:"email"`
+	}
+	// Decode JSON Request Body
+	decoder := json.NewDecoder(req.Body)
+	reqParams := reqParameters{}
+	errorEncoding := decoder.Decode(&reqParams)
+	// -- bad path --
+	if errorEncoding != nil {
+		log.Printf("Error decoding parameters: %s", errorEncoding)
+		_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	// -- Database operation -> SELECT * FROM users WHERE email = ...;
+	// Searching a 'user' entry in 'users' table via HTTP Request body {'email': '<any_value>'}
+	user, err := cfg.db.GetUserByEmail(req.Context(), reqParams.Email)
+	if err != nil {
+		_respondWithError(w, http.StatusBadRequest, "User does not exist")
+		return
+	}
+	// -- happy path -- Once successfully received from db, write into JSON for HTTP Response Body.
+	// Type define the struct, and create inline instance with _respondWithJSON()
+	type respParams struct {
+		ID uuid.UUID `json:"user_id"`
+	}
+	_respondWithJSON(w, http.StatusOK, respParams{ID: user.ID})
+	return
+
+}
+
+func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	type reqParameters struct {
+		Body   string    `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
+
+	// Decode JSON Request Body
+	decoder := json.NewDecoder(req.Body)
+	reqParams := reqParameters{}
+	errorEncoding := decoder.Decode(&reqParams)
+	// -- bad path --
+	if errorEncoding != nil {
+		log.Printf("Error decoding parameters: %s", errorEncoding)
+		_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+	// Validate Chirp length is less than or equal to 140 characters.
+	if len(reqParams.Body) > 140 {
+		_respondWithError(w, http.StatusBadRequest, "Chirp is too long")
+		return
+	} else if len(reqParams.Body) <= 0 {
+		_respondWithError(w, http.StatusBadRequest, "Chirp cannot be empty")
+		return
+	}
+	// -- end of bad path --
+
+	// Verify req's user_id exists -> ${value} into value
+	//stripped := reqParams.UserID[2 : len(reqParams.UserID)-1]
+	//parsedID, err := uuid.Parse(reqParams.UserID)
+	//if err != nil {
+	//	_respondWithError(w, http.StatusBadRequest, "Parse fail. User does not exist")
+	//	return
+	//}
+
+	user, err := cfg.db.GetUser(req.Context(), reqParams.UserID)
+	if err != nil {
+		_respondWithError(w, http.StatusBadRequest, "User does not exist")
+		return
+	}
+
+	// -- start of happy path --
+	// Work with response body parameters
+	cleanedBody := replaceProfaneWords(reqParams.Body)
+	//strUserID := fmt.Sprintf("${%v}", reqParams.UserID)
+
+	// Update 'chirps' database with new chrip
+	_, err = cfg.db.CreateChirp(req.Context(), database.CreateChirpParams{
+		Body:   cleanedBody,
+		UserID: user.ID,
+		//UserID: reqParams.UserID,
+	})
+	if err != nil {
+		_respondWithError(w, http.StatusBadRequest, "Chirp is too long")
+	}
+
+	type respParams struct {
+		Body   string    `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
+	resp := respParams{
+		Body:   cleanedBody,
+		UserID: user.ID,
+	}
+	_respondWithJSON(w, http.StatusCreated, resp)
+	return
+	// -- end of happy path --
+}
+
+/*
 func (cfg *apiConfig) handlerValidateChirp(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -294,6 +406,7 @@ func (cfg *apiConfig) handlerValidateChirp(w http.ResponseWriter, req *http.Requ
 	return
 	// -- end of happy path --
 }
+*/
 
 func replaceProfaneWords(msg string) string {
 	// words to replace

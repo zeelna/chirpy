@@ -69,3 +69,51 @@ curl -X POST "http://localhost:8080/admin/reset"
 # Expected -> HTTP 403 Forbidden.
 curl -X POST "http://localhost:8080/admin/reset"
 #----------------------------------------------
+
+--- POST api/users to succeed with POST /api/chirps ---
+
+# Create Saul with email -> '{ "email": "saul@bettercall.com"}'
+#15 Expected -> OK in HTML, http status code 200
+curl -X POST -i "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{ "email": "saul@bettercall.com"}'
+
+# Get Saul's ID by their email -> '{"email": "saul@bettercall.com"}'
+#16  Expected ->  # OK in HTML, http status code 200
+####  {"user_id":"8fcb85c2-dd66-4fe6-8028-c9d42060b389"}
+
+curl -X GET -i  "http://localhost:8080/api/users/" -H "Content-Type: application/json" -d '{"email": "saul@bettercall.com"}'
+
+# Verify with 'psql <db-connection-string' and SELECT * FROM users;
+
+#---- POST /api/chirps  -----------------------
+#17
+curl -X POST -i "http://localhost:8080/api/chirps" \
+  -H "Content-Type: application/json" \
+  -d '{"body":"If you'\''re committed enough, you can make any story work.","user_id":"8fcb85c2-dd66-4fe6-8028-c9d42060b389"}'
+
+# outcome:
+{"body":"If you're committed enough, you can make any story work.","user_id":"8fcb85c2-dd66-4fe6-8028-c9d42060b389"}
+# Verify with 'psql <db-connection-string' and SELECT * FROM chirps;
+
+#18
+curl -X POST -i "http://localhost:8080/api/chirps" \
+  -H "Content-Type: application/json" \
+  -d \
+'{"body": "This is a kerfuffle opinion I need to share with the world" ,"user_id":"8fcb85c2-dd66-4fe6-8028-c9d42060b389"}'
+
+#19
+
+#---- GET /api/users -----------------------
+#  { "email": "mloneusk@example.co" }
+#20 Expected -> http status code 200
+curl -X GET -i  "http://localhost:8080/api/users/" -H "Content-Type: application/json" -d '{"email": "mloneusk@example.co"}'
+
+# { "email": "dackjorsey@example.co" }
+#21 Expected -> http status code 200
+curl -X GET -i  "http://localhost:8080/api/users/" -H "Content-Type: application/json" -d '{"email": "dackjorsey@example.co"}'
+
+#22 {"email": "any"} Expected -> HTTP 400 Bad Request
+curl -X GET -i "http://localhost:8080/api/users/" -H "Content-Type: application/json" -d '{"email": "any"}'
+
+#23 {"email": "} Expected -> HTTP
+curl -X GET -i "http://localhost:8080/api/users/" -H "Content-Type: application/json" -d '{"email": "}'
+#----------------------------------------------
