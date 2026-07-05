@@ -3,8 +3,11 @@ package auth
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/alexedwards/argon2id"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 // Must download library -> 'go get github.com/alexedwards/argon2id'
@@ -33,4 +36,42 @@ func CheckPasswordHash(password, hash string) (bool, error) {
 		return false, err
 	}
 	return boolValue, nil
+}
+
+func MakeJWT(userID uuid.UUID, tokenSecret string, expiresIn time.Duration) (string, error) {
+	// he RegisteredClaims struct doesn't store timestamps as plain time.Time values.
+	//The library wraps them in its own type so it can handle JSON serialization correctly.
+	//That type is *jwt.NumericDate, and the library gives you a helper to build one:
+	nowTime := time.Now().UTC()
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
+		Issuer:    "chirpy-access",
+		IssuedAt:  jwt.NewNumericDate(nowTime),
+		ExpiresAt: jwt.NewNumericDate(nowTime.Add(expiresIn)),
+		Subject:   fmt.Sprintf("%v", userID),
+	})
+
+	jwtSigned, err := token.SignedString([]byte(tokenSecret))
+	if err != nil {
+		return "", err
+	}
+	return jwtSigned, nil
+}
+
+func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
+	keyFunc := func(t *jwt.Token) (interface{}, error) {
+		return []byte(tokenSecret), nil
+	}
+
+	// Pass empty 'Claims' struct that will be filled with fn-call 'jwt.ParseWithClaims()'
+	token, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, keyFunc)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	id, err := token.Claims.GetSubject()
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return uuid.Parse(id)
 }
