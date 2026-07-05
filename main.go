@@ -361,22 +361,21 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, req *http.Reques
 	//strUserID := fmt.Sprintf("${%v}", reqParams.UserID)
 
 	// Update 'chirps' database with new chrip
-	_, err = cfg.db.CreateChirp(req.Context(), database.CreateChirpParams{
+	chirp, err := cfg.db.CreateChirp(req.Context(), database.CreateChirpParams{
 		Body:   cleanedBody,
 		UserID: user.ID,
-		//UserID: reqParams.UserID,
 	})
 	if err != nil {
-		_respondWithError(w, http.StatusBadRequest, "Chirp is too long")
+		_respondWithError(w, http.StatusBadRequest, "Something went wrong")
+		return
 	}
 
-	type respParams struct {
-		Body   string    `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
-	}
-	resp := respParams{
-		Body:   cleanedBody,
-		UserID: user.ID,
+	resp := ChirpResponse{
+		ID:        chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:      chirp.Body,
+		UserID:    chirp.UserID,
 	}
 	_respondWithJSON(w, http.StatusCreated, resp)
 	return

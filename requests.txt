@@ -98,7 +98,7 @@ curl -X POST -i "http://localhost:8080/api/chirps" \
 curl -X POST -i "http://localhost:8080/api/chirps" \
   -H "Content-Type: application/json" \
   -d \
-'{"body": "This is a kerfuffle opinion I need to share with the world" ,"user_id":"8fcb85c2-dd66-4fe6-8028-c9d42060b389"}'
+'{"body": "This is a kerfuffle opinion I need to share with the world" ,"user_id":"ed0acc53-8513-49f4-99dd-c2ed84f2a371"}'
 
 #19
 
@@ -122,4 +122,4 @@ curl -X GET -i "http://localhost:8080/api/users/" -H "Content-Type: application/
 curl -X GET -i  "http://localhost:8080/api/chirps"
 
 
-curl -X GET -i  "http://localhost:8080/api/chirps/c48d8f89-52a0-4a1f-91a4-260398746d6a"
+curl -X GET -i  "http://localhost:8080/api/chirps/1b61b905-b0da-496f-a019-08c32e9db857"
