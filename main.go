@@ -41,19 +41,25 @@ func main() {
 	// #1 cmd: go get github.com/joho/godotenv
 	// instead, I added into go.mod
 
-	// IMPORTANT: load the .env into your environment
-	godotenv.Load()
+	// #1 load the .env into your environment to access the 'db connection string'
+	if err := godotenv.Load(); err != nil {
+		log.Fatalf("Error opening database: %s", err)
+	}
 	dbURL := os.Getenv("DB_URL")
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		log.Fatalf("Error opening database: %s", err)
 	}
+	// #2 use SQLC generated 'database' package to create a new <*database.Queries> and store into apiConfig struct
+	// so that handlers can access it
 	dbQueries := database.New(db)
 
+	// therefore, we add resulting 'dbQueries' into our db field
 	apiCfg := &apiConfig{
 		fileserverHits: atomic.Int32{},
 		db:             dbQueries,
 	}
+
 	// --------------------------------------------------------
 	// We have many handlers, we don't want potential conflicts with the fileserver handler.
 	// Updated the fileserver to use the /app/ path instead of /.
