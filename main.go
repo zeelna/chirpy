@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
+	"github.com/zeelna/chirpy/internal/auth"
 )
 
 // import "github.com/google/uuid"
@@ -141,6 +142,9 @@ func main() {
 
 	// GET /api/chirp with UUID
 	serverMux.HandleFunc("GET /api/chirps/{id}", apiCfg.handlerGetChirp)
+
+	// GET POST /api/login with UUID
+	serverMux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
 	// --------------------------------------------------------
 
 	server := http.Server{
@@ -238,9 +242,50 @@ func (cfg *apiConfig) handlerReset(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, req *http.Request) {
+	type reqParameters struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	// Decode JSON Request Body
+	decoder := json.NewDecoder(req.Body)
+	reqParams := reqParameters{}
+	errorEncoding := decoder.Decode(&reqParams)
+	// -- bad path --
+	if errorEncoding != nil {
+		log.Printf("Error decoding parameters: %s", errorEncoding)
+		_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	// -- Database operation -> SELECT * FROM users WHERE email = ...;
+	// Searching a 'user' entry in 'users' table via HTTP Request body {'email': '<any_value>'}
+	user, err := cfg.db.GetUserByEmail(req.Context(), reqParams.Email)
+	if err != nil {
+		_respondWithError(w, http.StatusUnauthorized, "Incorrect email or password")
+		return
+	}
+
+	isCorrectPassword, err := auth.CheckPasswordHash(reqParams.Password, user.HashedPassword)
+	if !isCorrectPassword || err != nil {
+		_respondWithError(w, http.StatusUnauthorized, "Incorrect email or password")
+		return
+	}
+
+	// -- happy path -- Once successfully received from db, write into JSON for HTTP Response Body.
+	_respondWithJSON(w, http.StatusOK, UserResponse{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email:     user.Email,
+	})
+	return
+}
+
 func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, req *http.Request) {
 	type reqParameters struct {
-		Email string `json:"email"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 	// Decode JSON Request Body
 	decoder := json.NewDecoder(req.Body)
@@ -258,13 +303,25 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, req *http.Request
 	// For web handlers, prefer r.Context(). It carries the cancellation signal for the specific request you're handling.
 	// It's useful when a Context is expected but there's no incoming request or parent operation to start from – like in startup code or a background job.
 
-	// Your SQLC method expects a context.Context as its first argument. In an HTTP handler, use the request context from r.Context().
-	user, err := cfg.db.CreateUser(ctx, reqParams.Email)
+	// Convert plain-text password into Hash
+	// todo: next assignment will remove this UNSAFE implementation, will use JWT
+	hashedPassword, err := auth.HashPassword(reqParams.Password)
 	if err != nil {
-		_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		_respondWithError(w, http.StatusBadRequest, fmt.Sprintf("%v", err))
 		return
 	}
 
+	// Your SQLC method expects a context.Context as its first argument. In an HTTP handler, use the request context from r.Context().
+	user, err := cfg.db.CreateUser(ctx, database.CreateUserParams{
+		Email:          reqParams.Email,
+		HashedPassword: hashedPassword,
+	})
+	if err != nil {
+		_respondWithError(w, http.StatusBadRequest, "User already exists")
+		return
+	}
+
+	// HTTP Response JSON body (type 'UserResponse' struct defined above)
 	respParams := UserResponse{
 		ID:        user.ID,
 		CreatedAt: user.CreatedAt,

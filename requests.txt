@@ -123,3 +123,37 @@ curl -X GET -i  "http://localhost:8080/api/chirps"
 
 
 curl -X GET -i  "http://localhost:8080/api/chirps/1b61b905-b0da-496f-a019-08c32e9db857"
+
+# ----- POST /api/users ----------
+# HTTP/1.1 400 Bad Request
+# {"error":"Password cannot be empty"}
+curl -X POST -i "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{ "email": "saul@bettercall.com", "password": ""}'
+
+
+# HTTP Status 400 BadRequest
+# {"error":"Password must be longer than 5 characters"}
+curl -X POST -i "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{ "email": "saul@bettercall.com", "password": "1234"}'
+
+
+# HTTP Status 201 Created
+curl -X POST -i "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{ "email": "saul@bettercall.com", "password": "123456"}'
+
+
+# HTTP Status 400 BadRequest
+# expected '{"error": "User already exists"}'
+curl -X POST -i "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{ "email": "saul@bettercall.com", "password": "123456"}'
+
+
+
+# HTTP/1.1 400 Bad Request
+# {"error":"Password cannot be empty"}
+curl -X POST -i "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{ "email": "taul@bettercall.com", "password": ""}'
+
+
+# ----- POST /api/login ----------
+# HTTP/1.1 200 OK
+curl -X POST -i "http://localhost:8080/api/login" -H "Content-Type: application/json" -d '{ "email": "saul@bettercall.com", "password": "123456"}'
+
+HTTP/1.1 401 Unauthorized
+{"error":"Incorrect email or password"}
+curl -X POST -i "http://localhost:8080/api/login" -H "Content-Type: application/json" -d '{ "email": "saul@bettercall.com", "password": "123457"}'
