@@ -36,6 +36,14 @@ cd sql/schema
 goose postgres postgres://postgres:postgres@localhost:5432/chirpy down
 ```
 
+#3c. Verify update by connecting to DB.
+```
+psql "postgres://postgres:postgres@localhost:5432/chirpy"
+```
+#3d Check table is updated
+```
+SELECT * from users;
+```
 #4. Write the SQL queries
 ```
 cd sql/queries
