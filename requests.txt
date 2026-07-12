@@ -419,3 +419,54 @@ curl -X GET -i "http://localhost:8080/api/chirps?author_id=d1276d39-72dd-4ffe-b2
 // 10 GET /api/chirps?author_id=${skylerID}
 curl -X GET -i "http://localhost:8080/api/chirps?author_id=160196dc-ee13-4196-9d20-677404fcac73" \
   -H "Content-Type: application/json" >> skyler.txt
+
+
+// CH6 Authentication - Refresh Tokens
+// Reset 'users' to start fresh
+curl -X POST -i "http://localhost:8080/admin/reset"
+
+// create SAUL
+curl -X POST -i "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{ "email": "saul@bettercall.com", "password": "123456"}'
+
+
+// login SAUL
+curl -X POST -i "http://localhost:8080/api/login" -H "Content-Type: application/json" -d '{ "email": "saul@bettercall.com", "password": "123456"}'
+{"id":"67eb21e9-de13-4645-86ba-443569d527ba","created_at":"2026-07-13T00:31:29.883885Z","updated_at":"2026-07-13T00:31:29.883885Z","email":"saul@bettercall.com","is_chirpy_red":false,"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiNjdlYjIxZTktZGUxMy00NjQ1LTg2YmEtNDQzNTY5ZDUyN2JhIiwiZXhwIjoxNzgzODk1NDkzLCJpYXQiOjE3ODM4OTE4OTN9.8SmadD1Vv9vscIp8m42KqwXCcxYSe4_8wminXyxn8ck","refresh_token":"9b22822bf07282876cb722c2a7daa2e30b6c8ef691df877bcf1f0234a2c0f274"}
+"refresh_token":"9b22822bf07282876cb722c2a7daa2e30b6c8ef691df877bcf1f0234a2c0f274"
+"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiNjdlYjIxZTktZGUxMy00NjQ1LTg2YmEtNDQzNTY5ZDUyN2JhIiwiZXhwIjoxNzgzODk1NDkzLCJpYXQiOjE3ODM4OTE4OTN9.8SmadD1Vv9vscIp8m42KqwXCcxYSe4_8wminXyxn8ck"
+
+
+// create CHRIP with access token, JWT
+curl -X POST -i "http://localhost:8080/api/chirps" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiNjdlYjIxZTktZGUxMy00NjQ1LTg2YmEtNDQzNTY5ZDUyN2JhIiwiZXhwIjoxNzgzODk1NDkzLCJpYXQiOjE3ODM4OTE4OTN9.8SmadD1Vv9vscIp8m42KqwXCcxYSe4_8wminXyxn8ck" \
+  -H "Content-Type: application/json" \
+  -d "{\"body\":\"Let's go.\"}"
+
+// create CHIRP with refresh token, not JWT
+curl -X POST -i "http://localhost:8080/api/chirps" \
+  -H "Authorization: Bearer 9b22822bf07282876cb722c2a7daa2e30b6c8ef691df877bcf1f0234a2c0f274" \
+  -H "Content-Type: application/json" \
+  -d '{ "body": "Mr Saulio..." }'
+
+
+curl -X POST -i "http://localhost:8080/api/refresh" \
+    -H "Authorization: Bearer 9b22822bf07282876cb722c2a7daa2e30b6c8ef691df877bcf1f0234a2c0f274"
+
+// new token jwt:
+"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiNjdlYjIxZTktZGUxMy00NjQ1LTg2YmEtNDQzNTY5ZDUyN2JhIiwiZXhwIjoxNzgzODk1NjQwLCJpYXQiOjE3ODM4OTIwNDB9.nLPo0pBRafH1xKkSKHpC6Bh3scQJt5nfIfw43tgMqL4"}
+
+// create CHRIP with new access token, JWT (both new and old JWT tokens are good for it)
+curl -X POST -i "http://localhost:8080/api/chirps" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiNjdlYjIxZTktZGUxMy00NjQ1LTg2YmEtNDQzNTY5ZDUyN2JhIiwiZXhwIjoxNzgzODk1NjQwLCJpYXQiOjE3ODM4OTIwNDB9.nLPo0pBRafH1xKkSKHpC6Bh3scQJt5nfIfw43tgMqL4" \
+  -H "Content-Type: application/json" \
+  -d "{\"body\":\"I'm the guy who's gonna win you this case.\"}"
+
+// POST /api/revoke (self-revoking the Refresh token)
+curl -X POST -i "http://localhost:8080/api/revoke" \
+    -H "Authorization: Bearer 9b22822bf07282876cb722c2a7daa2e30b6c8ef691df877bcf1f0234a2c0f274"
+// HTTP/1.1 204 No Content
+
+// POST /api/refresh (with revoked Refresh token)
+curl -X POST -i "http://localhost:8080/api/refresh"     -H "Authorization: Bearer 9b22822bf07282876cb722c2a7daa2e30b6c8ef691df877bcf1f0234a2c0f274"
+// HTTP/1.1 401 Unauthorized
+// -----------------------------------------
