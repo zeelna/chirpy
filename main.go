@@ -50,18 +50,20 @@ type apiConfig struct {
 //  curl -X POST "http://localhost:8080/api/validate_chirp" -H "Content-Type: application/json" -d '{"chirp":"hello"}'
 
 type LoginResponse struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
-	JwtToken  string    `json:"token"`
+	ID          uuid.UUID `json:"id"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Email       string    `json:"email"`
+	IsChirpyRed bool      `json:"is_chirpy_red"`
+	JwtToken    string    `json:"token"`
 }
 
 type UserResponse struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
+	ID          uuid.UUID `json:"id"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Email       string    `json:"email"`
+	IsChirpyRed bool      `json:"is_chirpy_red"`
 }
 
 type ChirpResponse struct {
@@ -167,6 +169,10 @@ func main() {
 
 	// POST /api/login with UUID
 	serverMux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
+
+	// WEBHOOKS
+	// 1. POST /api/polka/webhooks
+	serverMux.HandleFunc("POST /api/polka/webhooks", apiCfg.handlerPolkaWebhook)
 
 	// --------------------------------------------------------
 
@@ -314,11 +320,12 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, req *http.Request) {
 
 	// -- happy path -- Once successfully received from db, write into JSON for HTTP Response Body.
 	_respondWithJSON(w, http.StatusOK, LoginResponse{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email,
-		JwtToken:  jwtToken,
+		ID:          user.ID,
+		CreatedAt:   user.CreatedAt,
+		UpdatedAt:   user.UpdatedAt,
+		Email:       user.Email,
+		IsChirpyRed: user.IsChirpyRed,
+		JwtToken:    jwtToken,
 	})
 	return
 }
@@ -364,10 +371,11 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, req *http.Request
 
 	// HTTP Response JSON body (type 'UserResponse' struct defined above)
 	respParams := UserResponse{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email,
+		ID:          user.ID,
+		CreatedAt:   user.CreatedAt,
+		UpdatedAt:   user.UpdatedAt,
+		Email:       user.Email,
+		IsChirpyRed: user.IsChirpyRed,
 	}
 	_respondWithJSON(w, http.StatusCreated, respParams)
 	return
@@ -600,6 +608,7 @@ func (cfg *apiConfig) handlerDeleteChirp(w http.ResponseWriter, req *http.Reques
 	// Problem SOLVED with conditional - even-if malicious attacker provides spoofed JWT (Auth Bearer Token), then from that token, we find userID of chirp.
 	if user.ID != chirp.UserID {
 		_respondWithError(w, http.StatusForbidden, "Cannot delete chirp if not author of it")
+		return
 		// below is commented row for debug. Essentially, if malicious attacker acquires JWT access token, they can delete successfully (JWT serves as login-token here)
 		//_respondWithError(w, http.StatusForbidden, fmt.Sprintf("invalid spoof attempt with JWT, cannot delete chirp if not author of it. user.ID=%v; chirp.UserID=%v;", user.ID, chirp.UserID))
 	}
@@ -692,12 +701,61 @@ func (cfg *apiConfig) handlerUpdateCredentials(w http.ResponseWriter, req *http.
 
 	// Happy path - Creating the HTTP Response JSON body with updated entry from 'users' table in DB.
 	_respondWithJSON(w, http.StatusOK, UserResponse{
-		ID:        updatedUser.ID,
-		CreatedAt: updatedUser.CreatedAt,
-		UpdatedAt: updatedUser.UpdatedAt,
-		Email:     updatedUser.Email,
+		ID:          updatedUser.ID,
+		CreatedAt:   updatedUser.CreatedAt,
+		UpdatedAt:   updatedUser.UpdatedAt,
+		Email:       updatedUser.Email,
+		IsChirpyRed: updatedUser.IsChirpyRed,
 	})
 	// --- Database operation -- end of happy path --
+	return
+}
+
+func (cfg *apiConfig) handlerPolkaWebhook(w http.ResponseWriter, req *http.Request) {
+	// IMPORTANT: Polka uses the response code to know whether or not the webhook was received successfully.
+	// If the response code is anything other than 2XX, they'll retry the request.
+	// Therefore, use 2XX if request should not be retried !!!
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	type reqParameters struct {
+		Event string `json:"event"`
+		Data  struct {
+			UserID string `json:"user_id"`
+		} `json:"data"`
+	}
+
+	// Decode JSON Request Body
+	decoder := json.NewDecoder(req.Body)
+	reqParams := reqParameters{}
+	errorEncoding := decoder.Decode(&reqParams)
+	// -- bad path --
+	if errorEncoding != nil {
+		log.Printf("Error decoding parameters: %s", errorEncoding)
+		_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	// f the event is anything other than user.upgraded, the endpoint should immediately respond with a 204 status code - we don't care about any other events.
+	if reqParams.Event != "user.upgraded" {
+		_respondWithError(w, http.StatusNoContent, "") // Invalid event, no need to continue function execution
+		return
+	}
+
+	userUUID, err := uuid.Parse(reqParams.Data.UserID)
+	if err != nil {
+		_respondWithError(w, http.StatusNoContent, "") // Google UUID could not parse user's HTTP Request Body's data.user_id
+		return
+	}
+
+	if _, err := cfg.db.UpgradeUserToChirpyRed(req.Context(), userUUID); err != nil {
+		_respondWithError(w, http.StatusNotFound, "User does not exist")
+		return
+	}
+	// -- happy path --
+	_respondWithJSON(w, http.StatusNoContent, "")
+
 	return
 }
 

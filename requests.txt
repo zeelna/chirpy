@@ -285,3 +285,42 @@ curl -X DELETE -i "http://localhost:8080/api/chirps/8ac70bb7-77f3-4a03-a45f-e424
 curl -X GET -i "http://localhost:8080/api/chirps/f8418426-ff6e-436e-87ae-f5bfdcb2f2c3" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiNzBjY2Y2MzgtNDY4ZS00NzgyLWJiYjAtZGMxZDUyNTVkZmZiIiwiZXhwIjoxNzgzODYwODg1LCJpYXQiOjE3ODM4NTcyODV9.eqAGSuNnPtF9Z4mVP9V6-NCXKHC2zKFfdPd2gcrNlT0" \
   -H "Content-Type: application/json"
+
+
+/// ------CH8: L1. Webhooks requests -------------------------------------
+
+// 1. Reset 'users'
+curl -X POST -i "http://localhost:8080/admin/reset"
+// 2. Create a new 'user'
+curl -X POST -i "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{ "email": "walt@breakingbad.com", "password": "123456"}'
+
+{"id":"c36dab1e-d2cc-490f-a2ed-4f052e560933","created_at":"2026-07-12T17:30:51.586827Z","updated_at":"2026-07-12T17:30:51.586827Z","email":"walt@breakingbad.com","is_chirpy_red":false}
+
+// 3. POST /api/polka/webhooks - incorrect hook type from 'event' JSON
+
+curl -X POST -i "http://localhost:8080/api/polka/webhooks" \
+    -H "Content-Type: application/json" \
+    -d '{"data": {"user_id": "c36dab1e-d2cc-490f-a2ed-4f052e560933"},"event": "user.payment_failed" }'
+
+// HTTP/1.1 204 No Content
+
+// 4. POST /api/polka/webhooks - correct hook type from 'event' JSON
+
+curl -X POST -i "http://localhost:8080/api/polka/webhooks" \
+    -H "Content-Type: application/json" \
+    -d '{"data": {"user_id": "c36dab1e-d2cc-490f-a2ed-4f052e560933"},"event": "user.upgraded" }'
+
+// HTTP/1.1 204 No Content
+
+// 5. POST /api/login - should be .is_chirpy_red = true
+curl -X POST -i "http://localhost:8080/api/login" -H "Content-Type: application/json" -d '{ "email": "walt@breakingbad.com", "password": "123456"}'
+
+// HTTP/1.1 200 OK
+// {
+    "id":"c36dab1e-d2cc-490f-a2ed-4f052e560933",
+    "created_at":"2026-07-12T17:30:51.586827Z",
+    "updated_at":"2026-07-12T17:34:12.017317Z",
+    "email":"walt@breakingbad.com",
+    "is_chirpy_red":true,
+    "token": ...,
+}
