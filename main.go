@@ -37,6 +37,7 @@ type apiConfig struct {
 	db             *database.Queries
 	platform       string
 	jwtSecretKey   string
+	polkaKey       string
 }
 
 // Heplful Go doc links:
@@ -91,7 +92,11 @@ func main() {
 		log.Fatalf("Error opening database: %s", err)
 	}
 
-	// Load the JWT secre
+	// Polka provided us with an API key, and if a request to our webhook handler doesn't use that API key, we should reject the request.
+	// This ensures that only Polka can tell us to upgrade a user's account.
+	polkaSecretKey := os.Getenv("POLKA_KEY")
+
+	// Load the HTTP server's signing key -> JWT secret
 	jwtSecretKey := os.Getenv("JWT_SIGNING_KEY")
 
 	// #2 use SQLC generated 'database' package to create a new <*database.Queries> and store into apiConfig struct
@@ -104,6 +109,7 @@ func main() {
 		db:             dbQueries,
 		platform:       os.Getenv("PLATFORM"),
 		jwtSecretKey:   jwtSecretKey,
+		polkaKey:       polkaSecretKey,
 	}
 	// os.Getenv("PLATFORM") -> reading value of key 'PLATFORM' from .env into apiConfig struct
 
@@ -712,12 +718,25 @@ func (cfg *apiConfig) handlerUpdateCredentials(w http.ResponseWriter, req *http.
 }
 
 func (cfg *apiConfig) handlerPolkaWebhook(w http.ResponseWriter, req *http.Request) {
-	// IMPORTANT: Polka uses the response code to know whether or not the webhook was received successfully.
+	// IMPORTANT: Polka uses the response code to know whether the webhook was received successfully.
 	// If the response code is anything other than 2XX, they'll retry the request.
 	// Therefore, use 2XX if request should not be retried !!!
-
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
+
+	// Secure Webhook. Explained:
+	//  Anyone can send a request to our webhook handler, and we'll process it.
+	//  That means that if Chirpy users figured out our API documentation, they could simply upgrade their account without paying!
+	//  Solution: Parse the HTTP Header's 'Authorization ApiKey ${token}'
+	polkaApiKeyString, err := auth.GetAPIKey(req.Header)
+	if err != nil {
+		_respondWithError(w, http.StatusUnauthorized, fmt.Sprintf("%v", err))
+		return
+	}
+	if cfg.polkaKey != polkaApiKeyString {
+		_respondWithError(w, http.StatusUnauthorized, fmt.Sprintf("%v", err))
+		return
+	}
 
 	type reqParameters struct {
 		Event string `json:"event"`
