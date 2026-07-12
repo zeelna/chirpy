@@ -52,12 +52,13 @@ type apiConfig struct {
 //  curl -X POST "http://localhost:8080/api/validate_chirp" -H "Content-Type: application/json" -d '{"chirp":"hello"}'
 
 type LoginResponse struct {
-	ID          uuid.UUID `json:"id"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	Email       string    `json:"email"`
-	IsChirpyRed bool      `json:"is_chirpy_red"`
-	JwtToken    string    `json:"token"`
+	ID           uuid.UUID `json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	Email        string    `json:"email"`
+	IsChirpyRed  bool      `json:"is_chirpy_red"`
+	JwtToken     string    `json:"token"`
+	RefreshToken string    `json:"refresh_token"`
 }
 
 type UserResponse struct {
@@ -174,14 +175,24 @@ func main() {
 	// DELETE /api/chrips/{chirpID} with UUID
 	serverMux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.handlerDeleteChirp)
 
-	// POST /api/login with UUID
+	// POST /api/login with Email and Password in HTTP Request Body
 	serverMux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
+
+	// POST /api/refresh - requires only HTTP Request Header 'Authorization: Bearer <refresh-token>'
+	serverMux.HandleFunc("POST /api/refresh", apiCfg.handlerRefreshToken)
+
+	// POST /api/revoke -  requires only HTTP Request Header 'Authorization: Bearer <refresh-token>'
+	serverMux.HandleFunc("POST /api/revoke", apiCfg.handlerRevokeToken)
+	// ^  ^--- This is common for logout-style endpoints: “log out this session” means “invalidate this refresh token.”
+	// L_______ "log-out" principle. If you have refresh token (secret), you can revoke it.
+	// IMPORTANT: in Enterprise solutions require hardening, to avoid spoofing.
+	// -------------------------------------------------------------------------------
 
 	// WEBHOOKS
 	// 1. POST /api/polka/webhooks
 	serverMux.HandleFunc("POST /api/polka/webhooks", apiCfg.handlerPolkaWebhook)
 
-	// --------------------------------------------------------
+	// -------------------------------------------------------------------------------
 
 	server := http.Server{
 		Handler: serverMux,
@@ -279,10 +290,13 @@ func (cfg *apiConfig) handlerReset(w http.ResponseWriter, req *http.Request) {
 }
 
 func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+
 	type reqParameters struct {
-		Email            string `json:"email"`
-		Password         string `json:"password"`
-		ExpiresInSeconds int    `json:"expires_in_seconds"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		// ExpiresInSeconds int    `json:"expires_in_seconds"`
 	}
 
 	// Decode JSON Request Body
@@ -295,15 +309,6 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, req *http.Request) {
 		_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 		return
 	}
-
-	// ----convert {'expires_in_seconds': 1} to time.Duration() ----
-	// If it's specified by the client, use it as the expiration time. If it's not specified, use a default expiration time of 1 hour. If the client specified a number over 1 hour, use 1 hour as the expiration time.
-	if reqParams.ExpiresInSeconds == 0 || reqParams.ExpiresInSeconds > 3600 { // 0 seconds
-		reqParams.ExpiresInSeconds = 3600
-	}
-	// time.Duration() by default is using 'nanoseconds'. Here is conversion
-	expiresIn := time.Duration(reqParams.ExpiresInSeconds) * time.Second
-	// --------------------------------------------------------------
 
 	// -- Database operation -> SELECT * FROM users WHERE email = ...;
 	// Searching a 'user' entry in 'users' table via HTTP Request body {'email': '<any_value>'}
@@ -319,21 +324,128 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	jwtToken, err := auth.MakeJWT(user.ID, cfg.jwtSecretKey, expiresIn)
+	// ---- JWT as Access Token (60 minutes expiration time) ----
+	/* // NEW: Before hardcoding token length, we can allow the client to specify the expiration time in seconds via HTTP Request Body {'expires_in_seconds': <any_number>}.
+	// IMPORTANT: convert {'expires_in_seconds': 1} to time.Duration() ----
+	// If it's specified by the client, use it as the expiration time. If it's not specified, use a default expiration time of 1 hour. If the client specified a number over 1 hour, use 1 hour as the expiration time.
+	expiresAt := time.Now().Add(time.Hour)
+	expiresInSeconds := int(time.Until(expiresAt).Seconds())
+	if expiresInSeconds <= 0 || expiresInSeconds > 3600 {
+		expiresInSeconds = 3600
+	}
+	// time.Duration() by default is using 'nanoseconds'. Here is conversion
+	expiresIn := time.Duration(expiresInSeconds) * time.Second
+	*/
+
+	// --- Access token (JWT) expires in 1 hour (60 minutes) ----
+	jwtExpiresIn := time.Hour
+	accessToken, err := auth.MakeJWT(user.ID, cfg.jwtSecretKey, jwtExpiresIn)
 	if err != nil {
 		_respondWithError(w, http.StatusUnauthorized, fmt.Sprintf("%v", err))
 		return
 	}
+	// ----------------------------------------------------------
+	// --- Refresh token that lasts 60 days, stored in DB -------
+	// Solved in DB layer, 'INSERT INTO refresh_tokens (...) VALUES (expires_at)' with 'expires_at' = NOW() + INTERVAL '60 days'
+	// Refresh token (in DB) expires in 60 days (60 * 24 hours)
+	//refreshTokenExpiresIn := time.Now().Add(60 * 24 * time.Hour)
+	refreshToken, err := cfg.db.CreateRefreshToken(req.Context(), database.CreateRefreshTokenParams{
+		Token:  auth.MakeRefreshToken(),
+		UserID: user.ID,
+	}) // create a new refresh token in the database for the user
+	if err != nil {
+		_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+	// ----------------------------------------------------------
 
 	// -- happy path -- Once successfully received from db, write into JSON for HTTP Response Body.
 	_respondWithJSON(w, http.StatusOK, LoginResponse{
-		ID:          user.ID,
-		CreatedAt:   user.CreatedAt,
-		UpdatedAt:   user.UpdatedAt,
-		Email:       user.Email,
-		IsChirpyRed: user.IsChirpyRed,
-		JwtToken:    jwtToken,
+		ID:           user.ID,
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
+		Email:        user.Email,
+		IsChirpyRed:  user.IsChirpyRed,
+		JwtToken:     accessToken,
+		RefreshToken: refreshToken.Token,
 	})
+	return
+}
+
+func (cfg *apiConfig) handlerRefreshToken(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	// This new endpoint does not accept a request body,
+	// but does require a refresh token to be present in the headers,
+	// in the same Authorization: Bearer <refresh-token> format.
+
+	refreshTokenString, err := auth.GetBearerToken(req.Header)
+	if err != nil {
+		_respondWithError(w, http.StatusUnauthorized, fmt.Sprintf("%v", err))
+		return
+	}
+	// Verify that Authorization: Bearer <refresh-token> is valid and exists in the database.
+	refreshToken, err := cfg.db.GetRefreshToken(req.Context(), refreshTokenString)
+	if err != nil {
+		_respondWithError(w, http.StatusUnauthorized, "Invalid refresh token")
+		return
+	} // If it does not exist, return a 401 Unauthorized response.
+
+	// ! Lookup refresh token in db. HTTP401 Unauthorized if expired or revoked or not exist.
+	user, err := cfg.db.GetUserFromRefreshToken(req.Context(), refreshToken.Token)
+	if err != nil {
+		_respondWithError(w, http.StatusUnauthorized, "Invalid refresh token")
+		return
+	} // check is performed inside SQL query. NOW() < expires_at AND revoked_at IS NULL
+
+	// Return an Access Token (JWT) once we know RefreshToken exists+valid+alive
+	jwtExpiresIn := time.Hour
+	accessToken, err := auth.MakeJWT(user.ID, cfg.jwtSecretKey, jwtExpiresIn)
+	if err != nil {
+		_respondWithError(w, http.StatusUnauthorized, fmt.Sprintf("%v", err))
+		return
+	}
+	// HTTP Response Body, of newly created access token (JWT)
+	type JWTTokenResponse struct {
+		Token string `json:"token"`
+	}
+	_respondWithJSON(w, http.StatusOK, JWTTokenResponse{
+		Token: accessToken,
+	})
+	return
+}
+
+func (cfg *apiConfig) handlerRevokeToken(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	// This new endpoint does not accept a request body,
+	// but does require a refresh token to be present in the headers,
+	// in the same Authorization: Bearer <refresh-token> format.
+
+	refreshTokenString, err := auth.GetBearerToken(req.Header)
+	if err != nil {
+		_respondWithError(w, http.StatusUnauthorized, fmt.Sprintf("%v", err))
+		return
+	}
+	// Verify that Authorization: Bearer <refresh-token> is valid and exists in the database.
+	refreshToken, err := cfg.db.GetRefreshToken(req.Context(), refreshTokenString)
+	if err != nil {
+		_respondWithError(w, http.StatusUnauthorized, "Invalid refresh token")
+		return
+	} // If it does not exist, return a 401 Unauthorized response.
+
+	// ! Lookup refresh token in db, if exists then revoke it -> revoked_at = NOW(), updated_at = NOW()
+	if err := cfg.db.RevokeRefreshToken(req.Context(), refreshToken.Token); err != nil {
+		_respondWithError(w, http.StatusUnauthorized, "Invalid refresh token")
+		return
+	}
+
+	// happy-path
+	// Respond with a 204 status code. A 204 status means the request was successful but no body is returned
+	//_respondWithJSON(w, http.StatusNoContent, "") // Can also use this, checks if payload==""
+	w.WriteHeader(http.StatusNoContent)
 	return
 }
 
@@ -359,7 +471,6 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, req *http.Request
 	// It's useful when a Context is expected but there's no incoming request or parent operation to start from – like in startup code or a background job.
 
 	// Convert plain-text password into Hash
-	// todo: next assignment will remove this UNSAFE implementation, will use JWT
 	hashedPassword, err := auth.HashPassword(reqParams.Password)
 	if err != nil {
 		_respondWithError(w, http.StatusBadRequest, fmt.Sprintf("%v", err))
@@ -863,6 +974,12 @@ func _respondWithError(w http.ResponseWriter, statusCode int, msg string) {
 }
 
 func _respondWithJSON(w http.ResponseWriter, statusCode int, payload interface{}) {
+	// if HTTP.StatusNoContent or HTTP.Created
+	if payload == "" {
+		w.WriteHeader(statusCode)
+		return
+	}
+	// HTTP Response body expected
 	w.Header().Set("Content-Type", "application/json")
 	// Encode JSON Response body
 	data, errorMarshalling := json.Marshal(payload)

@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"strings"
@@ -12,6 +14,22 @@ import (
 )
 
 // Must download library -> 'go get github.com/alexedwards/argon2id'
+
+/*
+Add a func MakeRefreshToken() string function to your internal/auth package. It should use the following to generate a random 256-bit (32-byte) hex-encoded string:
+
+	rand.Read to generate 32 bytes (256 bits) of random data from the crypto/rand package (math/rand's Read function is deprecated).
+	hex.EncodeToString to convert the random data to a hex string
+*/
+func MakeRefreshToken() string {
+	token := make([]byte, 32) // 32 bytes = 256 bits
+	read, err := rand.Read(token)
+	if err != nil {
+		return ""
+	}
+	hexString := hex.EncodeToString(token[:read])
+	return hexString
+}
 
 // HashPassword Hash the password using the argon2id.CreateHash function.
 func HashPassword(password string) (string, error) {
@@ -60,12 +78,18 @@ func MakeJWT(userID uuid.UUID, tokenSecret string, expiresIn time.Duration) (str
 }
 
 func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
+	// A real JWT looks like xxxxx.yyyyy.zzzzz - three parts separated by dots.
+	// Your refresh token is plain hex string (56aa826d22baab4b...) with no dots at all.
+	// Refresh Token must not be passed to this function, because it is not a JWT and will fail validation.
+
+	// convert the tokenSecret string into a byte slice and return it as the key for signing the JWT.
 	keyFunc := func(t *jwt.Token) (interface{}, error) {
 		return []byte(tokenSecret), nil
 	}
 
 	// Pass empty 'Claims' struct that will be filled with fn-call 'jwt.ParseWithClaims()'
-	token, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, keyFunc)
+	claimsStruct := jwt.RegisteredClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, &claimsStruct, keyFunc)
 	if err != nil {
 		return uuid.Nil, err
 	}
