@@ -337,7 +337,3 @@ Chirpy demonstrates a complete Go backend flow:
 - protected webhook processing
 - SQLC-generated database access
 - Goose-managed schema evolution
-
-It is intentionally compact, but it covers the important backend building blocks that graders typically look for.
-
-
