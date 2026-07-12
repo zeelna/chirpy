@@ -505,30 +505,51 @@ func (cfg *apiConfig) handlerGetAllChirps(w http.ResponseWriter, req *http.Reque
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 
-	// Database operation to extract the all 'chirp' entries from table 'chirps'
-	chirps, err := cfg.db.GetAllChirps(req.Context())
-	// sad path
-	if err != nil {
-		_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+	// Declare the types of variables to avoid if-else scoping issue here.
+	var chirps []database.Chirp
+	var err error
+
+	queryParamAuthorID := req.URL.Query().Get("author_id")
+	// if -> No HTTP Query Parameter provided. So, Return All Chirps from database
+	if queryParamAuthorID == "" {
+		// Database operation to extract the all 'chirp' entries from table 'chirps'
+		chirps, err = cfg.db.GetAllChirps(req.Context())
+		// sad path
+		if err != nil {
+			_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+			return
+		}
+		// else -> Yes, HTTP Query parameter provided /?author_id=...
+	} else {
+		// convert string to Google.uuid type, because SQLC generated code expects that; see file <project_root>/internal/database/chirps.sql.go
+		queryParamAuthorUUID, err := uuid.Parse(queryParamAuthorID)
+		if err != nil {
+			_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+			return
+		}
+		chirps, err = cfg.db.GetAllChirpsByAuthor(req.Context(), queryParamAuthorUUID)
+		if err != nil {
+			_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+			return
+		}
+
+		// -- happy path, either with QueryParameter provided or NOT. --
+		// HTTP Response JSON Body must be snake-cased {'updated_at': ...}
+		// therefore, we cannot simply use []Chirp from SQLC generated file 'chirps.sql.go'
+		// if that wouldn't be the case, we could call fn; _respondWithJSON(w, http.StatusOK, chrips)
+		var responses []ChirpResponse
+		for _, chirp := range chirps {
+			responses = append(responses, ChirpResponse{
+				ID:        chirp.ID,
+				CreatedAt: chirp.CreatedAt,
+				UpdatedAt: chirp.UpdatedAt,
+				Body:      chirp.Body,
+				UserID:    chirp.UserID,
+			})
+		}
+		_respondWithJSON(w, http.StatusOK, responses)
 		return
 	}
-
-	// -- happy path --
-	// HTTP Response JSON Body must be snake-cased {'updated_at': ...}
-	// therefore, we cannot simply use []Chirp from SQLC generated file 'chirps.sql.go'
-	// if that wouldn't be the case, we could call fn; _respondWithJSON(w, http.StatusOK, chrips)
-	responses := []ChirpResponse{}
-	for _, chirp := range chirps {
-		responses = append(responses, ChirpResponse{
-			ID:        chirp.ID,
-			CreatedAt: chirp.CreatedAt,
-			UpdatedAt: chirp.UpdatedAt,
-			Body:      chirp.Body,
-			UserID:    chirp.UserID,
-		})
-	}
-	_respondWithJSON(w, http.StatusOK, responses)
-	return
 }
 
 func (cfg *apiConfig) handlerGetChirp(w http.ResponseWriter, req *http.Request) {
