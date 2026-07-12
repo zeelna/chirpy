@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sort"
 	"strings"
 	"time"
 
@@ -508,6 +509,15 @@ func (cfg *apiConfig) handlerGetAllChirps(w http.ResponseWriter, req *http.Reque
 	// Declare the types of variables to avoid if-else scoping issue here.
 	var chirps []database.Chirp
 	var err error
+	var responses []ChirpResponse
+
+	// Get the HTTP Query Parameters from HTTP Request
+	sortingCriterion := req.URL.Query().Get("sort")
+	// Defensive: Query parameter check (allow only "asc", "desc" or "", last indicates default behavior ("asc")
+	if sortingCriterion != "asc" && sortingCriterion != "desc" && sortingCriterion != "" {
+		_respondWithError(w, http.StatusBadRequest, "Invalid sorting criterion")
+		return
+	}
 
 	queryParamAuthorID := req.URL.Query().Get("author_id")
 	// if -> No HTTP Query Parameter provided. So, Return All Chirps from database
@@ -519,7 +529,9 @@ func (cfg *apiConfig) handlerGetAllChirps(w http.ResponseWriter, req *http.Reque
 			_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 			return
 		}
-		// else -> Yes, HTTP Query parameter provided /?author_id=...
+		// else -> Yes, HTTP Query parameter provided /?author_id=....
+		// IMPORTANT: Do not return happy path in this else (or above if), we must allow combination of HTTP Query Parameters
+		// example: GET /api/chirps/?sort=desc&author_id=123&
 	} else {
 		// convert string to Google.uuid type, because SQLC generated code expects that; see file <project_root>/internal/database/chirps.sql.go
 		queryParamAuthorUUID, err := uuid.Parse(queryParamAuthorID)
@@ -532,24 +544,45 @@ func (cfg *apiConfig) handlerGetAllChirps(w http.ResponseWriter, req *http.Reque
 			_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 			return
 		}
+	} // end of block if-else about GET /api/chirps/?author_id=... or  GET /api/chirps
 
-		// -- happy path, either with QueryParameter provided or NOT. --
-		// HTTP Response JSON Body must be snake-cased {'updated_at': ...}
-		// therefore, we cannot simply use []Chirp from SQLC generated file 'chirps.sql.go'
-		// if that wouldn't be the case, we could call fn; _respondWithJSON(w, http.StatusOK, chrips)
-		var responses []ChirpResponse
-		for _, chirp := range chirps {
-			responses = append(responses, ChirpResponse{
-				ID:        chirp.ID,
-				CreatedAt: chirp.CreatedAt,
-				UpdatedAt: chirp.UpdatedAt,
-				Body:      chirp.Body,
-				UserID:    chirp.UserID,
-			})
-		}
+	// -- happy path, either with  QueryParameter provided or NOT. --
+
+	// HTTP Response JSON Body must be snake-cased {'updated_at': ...}
+	// therefore, we cannot simply use []Chirp from SQLC generated file 'chirps.sql.go'
+	// if that wouldn't be the case, we could call fn; _respondWithJSON(w, http.StatusOK, chrips)
+	for _, chirp := range chirps {
+		responses = append(responses, ChirpResponse{
+			ID:        chirp.ID,
+			CreatedAt: chirp.CreatedAt,
+			UpdatedAt: chirp.UpdatedAt,
+			Body:      chirp.Body,
+			UserID:    chirp.UserID,
+		})
+	}
+
+	// solving GET /api/chirps/?sort=desc (and also solving GET /api/chirps/?sort=desc&author_id=<any_number>
+	if sortingCriterion == "desc" {
+		// Using custom .After() and .Before() approach, because sorting by 'created_at' requires comparing time.Time objects (type defined in 'chirps' table)
+		/* // example:
+		t1.Before(t2)  // returns true if t1 happened before t2
+		t1.After(t2)   // returns true if t1 happened after t2
+		t1.Equal(t2)   // returns true if they're the same instant
+		// For ascending (oldest first): responses[i].CreatedAt.Before(responses[j].CreatedAt)
+		// For descending (newest first):  responses[i].CreatedAt.After(responses[j].CreatedAt)
+		*/
+		sort.Slice(responses, func(i, j int) bool {
+			t1 := responses[i].CreatedAt
+			t2 := responses[j].CreatedAt
+			return t1.After(t2)
+		})
 		_respondWithJSON(w, http.StatusOK, responses)
 		return
-	}
+	} // -- end of 'sortingCriterion == "desc" ' if-block
+	// If 'sortingCriterion' provided by HTTP Query parameter is not "desc", then use the default behavior from SQLC generated code, which is "asc".
+	// Even if user did not provide sorting via HTTP Query parameter, then jump again to "asc" as is default from the SQLC generated code
+	_respondWithJSON(w, http.StatusOK, responses)
+	return
 }
 
 func (cfg *apiConfig) handlerGetChirp(w http.ResponseWriter, req *http.Request) {
