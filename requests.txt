@@ -324,3 +324,36 @@ curl -X POST -i "http://localhost:8080/api/login" -H "Content-Type: application/
     "is_chirpy_red":true,
     "token": ...,
 }
+
+/// ------CH8: L3. Webhooks requests -------------------------------------
+
+// 1. Reset 'users'
+curl -X POST -i "http://localhost:8080/admin/reset"
+// 2. Create a new 'user'
+curl -X POST -i "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{ "email": "walt@breakingbad.com", "password": "123456"}'
+{"id":"bf97a7cf-d14e-457d-9c7a-cec548601c26"
+
+// 3. POST /api/polka/webhooks - without API key
+
+curl -X POST -i "http://localhost:8080/api/polka/webhooks" \
+    -H "Content-Type: application/json" \
+    -d '{"data": {"user_id": "bf97a7cf-d14e-457d-9c7a-cec548601c26"},"event": "user.upgraded" }'
+
+// HTTP/1.1 401 Unauthorized
+
+// NOW copy from .env the correct authorization key (API_KEY) required for this endpoint POST /api/polka/webhooks. (Necessary to avoid anybody changing to Premium "ChirpyRed"
+// 4. POST /api/polka/webhooks - with api key <curl ... -H "Authorization: ApiKey {value from .env -> POLKA_KEY} " >
+curl -X POST -i "http://localhost:8080/api/polka/webhooks" \
+    -d '{"data": {"user_id": "bf97a7cf-d14e-457d-9c7a-cec548601c26"},"event": "user.upgraded" }'
+    -H "Content-Type: application/json" \
+    -H "Authorization: ApiKey <todo: add_from_.env -> API_KEY  > "
+
+// 5. POST /api/login -> just to verify is_chirpy_red is 'true'
+curl -X POST -i "http://localhost:8080/api/login" -H "Content-Type: application/json" -d '{ "email": "walt@breakingbad.com", "password": "123456"}'
+
+// 5b: Invalid "Authorization: ApiKey ..."
+// POST /api/polka/webhooks - fails due to without API key in "Authorization: ApiKey ..."
+curl -X POST -i "http://localhost:8080/api/polka/webhooks" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: ApiKey <todo: add_from_.env -> API_KEY  > " \
+    -d '{"data": {"user_id": "239377db-b8e7-4d89-a28b-7a645556a82e"},"event": "user.upgraded" }'

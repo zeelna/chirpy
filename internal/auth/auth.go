@@ -83,8 +83,62 @@ func GetBearerToken(headers http.Header) (string, error) {
 	bearer := headers.Get("Authorization")
 	isEmptyBearer := len(strings.Trim(bearer, "")) == 0
 	if isEmptyBearer {
-		return "", fmt.Errorf("Authorization incomplete due to no Bearer token found")
+		return "", fmt.Errorf("Authorization incomplete : 'Bearer' token not found")
 	}
-	tokenString := strings.TrimPrefix(bearer, "Bearer ")
+	tokenString := strings.TrimPrefix(bearer, "Bearer ") // must include whitespace 'Bearer ' !
 	return tokenString, nil
+}
+
+// Option 1: Same as GetBearerToken, but trimming 'ApiKey'
+func GetAPIKey(headers http.Header) (string, error) {
+	bearer := headers.Get("Authorization")
+	isEmptyBearer := len(strings.Trim(bearer, "")) == 0
+	if isEmptyBearer {
+		return "", fmt.Errorf("Authorization incomplete : 'ApiKey' token not found")
+	}
+	tokenString := strings.TrimPrefix(bearer, "ApiKey ") // must include whitespace 'ApiKey ' !
+	return tokenString, nil
+}
+
+// Option 2: Same as 'GetBearerToken' but with helper function _AuthorizationParser()
+func GetAPIKey2(headers http.Header) (string, error) {
+	bearer := headers.Get("Authorization")
+
+	tokenString, err := _AuthorizationParser(bearer, authParse{
+		TrimPrefix: "ApiKey ", // must include whitespace!
+		ErrorMsg:   "Authorization incomplete : 'ApiKey' token not found",
+	})
+	if err != nil {
+		return "", err
+	}
+	return tokenString, nil
+}
+
+type authParse struct {
+	TrimPrefix string
+	ErrorMsg   string
+}
+
+func _AuthorizationParser(authHeader string, auth authParse) (string, error) {
+	isEmpty := len(strings.Trim(authHeader, "")) == 0
+	if isEmpty {
+		return "", fmt.Errorf(auth.ErrorMsg)
+	}
+	tokenString := strings.TrimPrefix(authHeader, auth.TrimPrefix)
+	return tokenString, nil
+}
+
+// Option 3:
+func GetAPIKey3(headers http.Header) (string, error) {
+	return parseAuthToken(
+		headers.Get("Authorization"),
+		"ApiKey",
+		"Authorization incomplete : 'ApiKey' token not found")
+}
+
+func parseAuthToken(authHeader, prefix, errMsg string) (string, error) {
+	if strings.TrimSpace(authHeader) == "" {
+		return "", fmt.Errorf(errMsg)
+	}
+	return strings.TrimPrefix(authHeader, prefix), nil
 }
