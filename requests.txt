@@ -157,3 +157,44 @@ curl -X POST -i "http://localhost:8080/api/login" -H "Content-Type: application/
 HTTP/1.1 401 Unauthorized
 {"error":"Incorrect email or password"}
 curl -X POST -i "http://localhost:8080/api/login" -H "Content-Type: application/json" -d '{ "email": "saul@bettercall.com", "password": "123457"}'
+
+
+# ---CH7: Authorization tests --------------------------
+curl -X POST -i "http://localhost:8080/admin/reset"
+curl -X POST -i "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{ "email": "walt@breakingbad.com", "password": "123456"}'
+
+{"id":"9428a223-201a-47b0-a2a3-eb6d332f22d3","created_at":"2026-07-12T13:58:19.151855Z","updated_at":"2026-07-12T13:58:19.151855Z","email":"walt@breakingbad.com"}
+
+curl -X POST -i "http://localhost:8080/api/login" -H "Content-Type: application/json" -d '{ "email": "walt@breakingbad.com", "password": "123456"}'
+
+{   "id":"9428a223-201a-47b0-a2a3-eb6d332f22d3",
+    "created_at":"2026-07-12T13:58:19.151855Z",
+    "updated_at":"2026-07-12T13:58:19.151855Z",
+    "email":"walt@breakingbad.com",
+    "token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiOTQyOGEyMjMtMjAxYS00N2IwLWEyYTMtZWI2ZDMzMmYyMmQzIiwiZXhwIjoxNzgzODU3NTkwLCJpYXQiOjE3ODM4NTM5OTB9.aMl8Qa7_fA6xCKHNiNEJGfSaSKlTTUWV8kTSorzIdG4"
+}
+
+// give the Authorization Header
+curl -X PUT -i "http://localhost:8080/api/users" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiOTQyOGEyMjMtMjAxYS00N2IwLWEyYTMtZWI2ZDMzMmYyMmQzIiwiZXhwIjoxNzgzODU3NTkwLCJpYXQiOjE3ODM4NTM5OTB9.aMl8Qa7_fA6xCKHNiNEJGfSaSKlTTUWV8kTSorzIdG4" \
+  -H "Content-Type: application/json" \
+  -d '{ "email": "walt@breakingbad.com", "password": "losPollosHermanos" }'
+
+// Result HTTP 200, OK
+{"id":"9428a223-201a-47b0-a2a3-eb6d332f22d3","created_at":"2026-07-12T13:58:19.151855Z","updated_at":"2026-07-12T14:06:11.324266Z","email":"walt@breakingbad.com"}
+
+// TRY # 1: Update with NoToken
+curl -X PUT -i "http://localhost:8080/api/users" \
+  -H "Content-Type: application/json" \
+  -d '{ "email": "walt@breakingbad.com", "password": "j3ssePinkM@nCantCook" }'
+// HTTP/1.1 401 Unauthorized
+
+// TRY # 2: Update with badToken
+curl -X PUT -i "http://localhost:8080/api/users" \
+  -H "Authorization: Bearer ayJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiOTQyOGEyMjMtMjAxYS00N2IwLWEyYTMtZWI2ZDMzMmYyMmQzIiwiZXhwIjoxNzgzODU3NTkwLCJpYXQiOjE3ODM4NTM5OTB9.aMl8Qa7_fA6xCKHNiNEJGfSaSKlTTUWV8kTSorzIdG4" \
+  -H "Content-Type: application/json" \
+  -d '{ "email": "walt@breakingbad.com", "password": "j3ssePinkM@nCantCook" }'
+
+// HTTP/1.1 401 Unauthorized
+// Result JSON Body:
+{"error":"Authorization unsuccessful. Invalid JWT or secret"}

@@ -146,6 +146,11 @@ func main() {
 	//-- retrieve ID of user via HTTP Request Body {'email': 'abc@xyz.com'}
 	serverMux.HandleFunc("GET /api/users/", apiCfg.handlerGetUserByEmail)
 
+	// PUT /api/users - only users can update their own (but not others') email and password. It requires
+	// 1) access token in the HTTP Request Header
+	// 2) a new 'password' and a new 'email' in the request body
+	serverMux.HandleFunc("PUT /api/users", apiCfg.handlerUpdateCredentials)
+
 	// POST /api/chirps
 	// ported logic into 'handlerCreateChrip' and delete duplicate this validate handler
 	//serverMux.HandleFunc("POST /api/validate_chirp", apiCfg.handlerValidateChirp)
@@ -157,8 +162,9 @@ func main() {
 	// GET /api/chirp with UUID
 	serverMux.HandleFunc("GET /api/chirps/{id}", apiCfg.handlerGetChirp)
 
-	// GET POST /api/login with UUID
+	// POST /api/login with UUID
 	serverMux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
+
 	// --------------------------------------------------------
 
 	server := http.Server{
@@ -450,7 +456,6 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, req *http.Reques
 	}
 	// -- end of bad path --
 
-
 	// -- start of happy path --
 	// Work with response body parameters
 	cleanedBody := replaceProfaneWords(reqParams.Body)
@@ -539,6 +544,84 @@ func (cfg *apiConfig) handlerGetChirp(w http.ResponseWriter, req *http.Request) 
 	})
 	return
 	// -- end of happy path --
+}
+func (cfg *apiConfig) handlerUpdateCredentials(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	type reqParameters struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	// Decode JSON Request Body
+	decoder := json.NewDecoder(req.Body)
+	reqParams := reqParameters{}
+	errorEncoding := decoder.Decode(&reqParams)
+	// -- bad path --
+	if errorEncoding != nil {
+		log.Printf("Error decoding parameters: %s", errorEncoding)
+		_respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	// ----- Authorization - before any operation, Verify that: 'Logged-in' by JWT Access Token in HTTP Header--------
+	// Authorization: To update credentials, you must be logged-in, that is:
+	// The HTTP Header will look like this:  ´Authorization: Bearer <token>´
+	tokenString, err := auth.GetBearerToken(req.Header)
+	if err != nil {
+		_respondWithError(w, http.StatusUnauthorized, fmt.Sprintf("%v", err))
+		return
+	}
+	// Verify JWT string is correct
+	tokenSecret := cfg.jwtSecretKey
+	uuidFromJWT, err := auth.ValidateJWT(tokenString, tokenSecret)
+	if err != nil {
+		_respondWithError(w, http.StatusUnauthorized, "Authorization unsuccessful. Invalid JWT or secret")
+		return
+	}
+	// JWT Token returns the UUID of specific user. NOW confirmed 'user' exists in 'users' table in database
+	user, err := cfg.db.GetUser(req.Context(), uuidFromJWT)
+	if err != nil {
+		_respondWithError(w, http.StatusBadRequest, "User does not exist")
+		return
+	}
+	// -- end of JWT Validation --------------------------------------
+	// -- Authorization complete ---------------------------
+
+	// --  Authorized User acquired from JWT, continue to update the DB credentials --
+	// 0) update 'updated_at' entry, 1) hash new password, 2) overwrite with new hashed-password, 3) overwrite with new email in db,
+	newEmail := reqParams.Email
+	newHashedPassword, err := auth.HashPassword(reqParams.Password)
+	if err != nil {
+		_respondWithError(w, http.StatusBadRequest, fmt.Sprintf("%v", err))
+		return
+	}
+
+	// In directory <project_root>/sql/queries, look at the `-- name: UpdateUser :one`
+	// 0) updated_at is changed with NOW() because we are modifying existing entry !
+	// 1) expects id for WHERE, and newEmail and newPassword as values that will be modified.
+	// 2) also, returns the 'user' entry from DB.
+	// essentially, this UPDATE query is modified to return result via ...RETURNING id, email, created_at, updated_at*
+	updatedUser, err := cfg.db.UpdateUser(req.Context(), database.UpdateUserParams{
+		ID:             user.ID,
+		Email:          newEmail,
+		HashedPassword: newHashedPassword,
+	})
+	if err != nil {
+		_respondWithError(w, http.StatusBadRequest, "User does not exist")
+		return
+	}
+
+	// Happy path - Creating the HTTP Response JSON body with updated entry from 'users' table in DB.
+	_respondWithJSON(w, http.StatusOK, UserResponse{
+		ID:        updatedUser.ID,
+		CreatedAt: updatedUser.CreatedAt,
+		UpdatedAt: updatedUser.UpdatedAt,
+		Email:     updatedUser.Email,
+	})
+	// --- Database operation -- end of happy path --
+	return
 }
 
 // Censoring feature to avoid profanities, when calling HTTP Request -> POST /api/chirp
