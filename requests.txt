@@ -198,3 +198,90 @@ curl -X PUT -i "http://localhost:8080/api/users" \
 // HTTP/1.1 401 Unauthorized
 // Result JSON Body:
 {"error":"Authorization unsuccessful. Invalid JWT or secret"}
+
+
+# ---CH7C: Authorization - Delete Chirp --------------------------
+// 1. Reset 'users'
+curl -X POST -i "http://localhost:8080/admin/reset"
+// 2. Create a new 'user'
+curl -X POST -i "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{ "email": "walt@breakingbad.com", "password": "123456"}'
+
+//
+{"id":"d0adb908-f90e-49ee-aaf0-6d348a2d716f","created_at":"2026-07-12T16:05:14.128843Z","updated_at":"2026-07-12T16:05:14.128843Z","email":"walt@breakingbad.com"}
+
+// 3. Login that 'user'
+curl -X POST -i "http://localhost:8080/api/login" -H "Content-Type: application/json" -d '{ "email": "walt@breakingbad.com", "password": "123456"}'
+
+{"id":"b9023f06-5ddb-4168-a46b-2d5547ea63d3","created_at":"2026-07-12T16:12:20.675088Z","updated_at":"2026-07-12T16:12:20.675088Z","email":"walt@breakingbad.com","token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiYjkwMjNmMDYtNWRkYi00MTY4LWE0NmItMmQ1NTQ3ZWE2M2QzIiwiZXhwIjoxNzgzODY1NTQ2LCJpYXQiOjE3ODM4NjE5NDZ9.GaTtpRK-p1_kXLz8cozfNi4YiAEb_BYh_l13CVMWW38"}
+// TODO: Copy token here from HTTP Response Body -- WALT's token
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiYjkwMjNmMDYtNWRkYi00MTY4LWE0NmItMmQ1NTQ3ZWE2M2QzIiwiZXhwIjoxNzgzODY1NTQ2LCJpYXQiOjE3ODM4NjE5NDZ9.GaTtpRK-p1_kXLz8cozfNi4YiAEb_BYh_l13CVMWW38
+
+
+// 4. give the Authorization Header
+curl -X POST -i "http://localhost:8080/api/chirps" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiYjkwMjNmMDYtNWRkYi00MTY4LWE0NmItMmQ1NTQ3ZWE2M2QzIiwiZXhwIjoxNzgzODY1NTQ2LCJpYXQiOjE3ODM4NjE5NDZ9.GaTtpRK-p1_kXLz8cozfNi4YiAEb_BYh_l13CVMWW38" \
+  -H "Content-Type: application/json" \
+  -d '{ "body": "I did it for me. I liked it. I was good at it. And I was really... I was alive." }'
+
+
+// response HTTP 201.
+{"id":"8ac70bb7-77f3-4a03-a45f-e424dfb378fc","created_at":"2026-07-12T16:13:25.274456Z","updated_at":"2026-07-12T16:13:25.274456Z","body":"I did it for me. I liked it. I was good at it. And I was really... I was alive.","user_id":"b9023f06-5ddb-4168-a46b-2d5547ea63d3"}
+
+// 5. GET /api/chirps/${chirpID}
+curl -X GET -i "http://localhost:8080/api/chirps/8ac70bb7-77f3-4a03-a45f-e424dfb378fc" \
+  -H "Content-Type: application/json"
+
+// HTTP/1.1 200 OK
+{"id":"a92358b5-16a9-4d85-b171-d95165a13f23","created_at":"2026-07-12T16:06:11.654176Z","updated_at":"2026-07-12T16:06:11.654176Z","body":"I did it for me. I liked it. I was good at it. And I was really... I was alive.","user_id":"d0adb908-f90e-49ee-aaf0-6d348a2d716f"}
+
+// 5b. noToken to GET Chirp -- GET /api/chirps/${chirpID}
+curl -X GET -i "http://localhost:8080/api/chirps/8ac70bb7-77f3-4a03-a45f-e424dfb378fc" \
+  -H "Content-Type: application/json"
+
+// HTTP/1.1 200 OK
+// {"id":"b610e4e5-40c9-4d02-af38-336a2e422e2b","created_at":"2026-07-12T14:55:07.188315Z","updated_at":"2026-07-12T14:55:07.188315Z","body":"I did it for me. I liked it. I was good at it. And I was really... I was alive.","user_id":"70ccf638-468e-4782-bbb0-dc1d5255dffb"}
+
+
+// 6. DELETE /api/chirps/${chirpID}
+curl -X DELETE -i "http://localhost:8080/api/chirps/8ac70bb7-77f3-4a03-a45f-e424dfb378fc" \
+  -H "Content-Type: application/json"
+
+//  HTTP 401 Unauthorized
+// {"error":"Authorization incomplete due to no Bearer token found"}
+
+// 7. POST /api/users
+curl -X POST -i "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{ "email": "saul@bettercall.com", "password": "123456"}'
+// result:
+{"id":"a13af562-edfe-419b-aae9-a599db1bce79","created_at":"2026-07-12T16:14:50.685053Z","updated_at":"2026-07-12T16:14:50.685053Z","email":"saul@bettercall.com"}
+
+
+// 8. POST /api/login
+curl -X POST -i "http://localhost:8080/api/login" -H "Content-Type: application/json" -d '{ "email": "saul@bettercall.com", "password": "123456"}'
+
+{"id":"a13af562-edfe-419b-aae9-a599db1bce79","created_at":"2026-07-12T16:14:50.685053Z","updated_at":"2026-07-12T16:14:50.685053Z","email":"saul@bettercall.com","token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiYTEzYWY1NjItZWRmZS00MTliLWFhZTktYTU5OWRiMWJjZTc5IiwiZXhwIjoxNzgzODY1NzExLCJpYXQiOjE3ODM4NjIxMTF9.1xzY1dZjqhAnGkLe1kKBlq6kpFrDue2bU8tFrpVPvXM"}
+
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiYTEzYWY1NjItZWRmZS00MTliLWFhZTktYTU5OWRiMWJjZTc5IiwiZXhwIjoxNzgzODY1NzExLCJpYXQiOjE3ODM4NjIxMTF9.1xzY1dZjqhAnGkLe1kKBlq6kpFrDue2bU8tFrpVPvXM
+
+
+// before 9 LOGIN as saul@bettercall.com
+curl -X POST -i "http://localhost:8080/api/login" -H "Content-Type: application/json" -d '{ "email": "saul@bettercall.com, "password": "123456"}'
+// get the Access Token and paste int curl's -H "Authorization: Bearer ${token}"
+
+// 9. DELETE /api/chirps/${chirpID} -- saul's Access Token, but PathVariable in endpoint is walter's chirp
+curl -X DELETE -i "http://localhost:8080/api/chirps/8ac70bb7-77f3-4a03-a45f-e424dfb378fc" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiYTEzYWY1NjItZWRmZS00MTliLWFhZTktYTU5OWRiMWJjZTc5IiwiZXhwIjoxNzgzODY1NzExLCJpYXQiOjE3ODM4NjIxMTF9.1xzY1dZjqhAnGkLe1kKBlq6kpFrDue2bU8tFrpVPvXM"
+// HTTP 403
+
+// before 10, LOGIN as walt@breakingbad.com
+curl -X POST -i "http://localhost:8080/api/login" -H "Content-Type: application/json" -d '{ "email": "walt@breakingbad.com", "password": "123456"}'
+
+// 10. DELETE /api/chirps/${chirpID} -- DELETE with correct
+curl -X DELETE -i "http://localhost:8080/api/chirps/8ac70bb7-77f3-4a03-a45f-e424dfb378fc" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiYjkwMjNmMDYtNWRkYi00MTY4LWE0NmItMmQ1NTQ3ZWE2M2QzIiwiZXhwIjoxNzgzODY1NTQ2LCJpYXQiOjE3ODM4NjE5NDZ9.GaTtpRK-p1_kXLz8cozfNi4YiAEb_BYh_l13CVMWW38"
+
+// 11. GET /api/chirps/${chirpID}
+curl -X GET -i "http://localhost:8080/api/chirps/f8418426-ff6e-436e-87ae-f5bfdcb2f2c3" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiNzBjY2Y2MzgtNDY4ZS00NzgyLWJiYjAtZGMxZDUyNTVkZmZiIiwiZXhwIjoxNzgzODYwODg1LCJpYXQiOjE3ODM4NTcyODV9.eqAGSuNnPtF9Z4mVP9V6-NCXKHC2zKFfdPd2gcrNlT0" \
+  -H "Content-Type: application/json"

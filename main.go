@@ -162,6 +162,9 @@ func main() {
 	// GET /api/chirp with UUID
 	serverMux.HandleFunc("GET /api/chirps/{id}", apiCfg.handlerGetChirp)
 
+	// DELETE /api/chrips/{chirpID} with UUID
+	serverMux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.handlerDeleteChirp)
+
 	// POST /api/login with UUID
 	serverMux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
 
@@ -545,6 +548,80 @@ func (cfg *apiConfig) handlerGetChirp(w http.ResponseWriter, req *http.Request) 
 	return
 	// -- end of happy path --
 }
+
+func (cfg *apiConfig) handlerDeleteChirp(w http.ResponseWriter, req *http.Request) {
+	// Headers
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	// GET /api/chirps/{id} into uuid.UUID type
+	idString := req.PathValue("chirpID")
+	deleteChirpUUID, err := uuid.Parse(idString)
+	//  -- HTTP Request PathVariable "id" failed to convert into Google's UUID failed --
+	if err != nil {
+		_respondWithError(w, http.StatusNotFound, "Chirp does not exist.")
+		return
+	}
+
+	// ----- Authorization - before any operation, Verify that: 'Logged-in' by JWT Access Token in HTTP Header--------
+	// Authorization: To delete chirp, you must be logged-in, that is:
+	// The HTTP Header will look like this:  ´Authorization: Bearer <token>´
+	tokenString, err := auth.GetBearerToken(req.Header)
+	if err != nil {
+		_respondWithError(w, http.StatusUnauthorized, fmt.Sprintf("%v", err))
+		return
+	}
+	// Verify JWT string is correct
+	tokenSecret := cfg.jwtSecretKey
+	uuidFromJWT, err := auth.ValidateJWT(tokenString, tokenSecret)
+	if err != nil {
+		_respondWithError(w, http.StatusUnauthorized, "Authorization unsuccessful. Invalid JWT or secret")
+		return
+	}
+	// JWT Token returns the UUID of specific user. NOW confirmed 'user' exists in 'users' table in database
+	// if 'Authorization: Bearer ${token}' is stolen of EXISTING user, this passes. If non-existing user, err is caught
+	user, err := cfg.db.GetUser(req.Context(), uuidFromJWT)
+	if err != nil {
+		_respondWithError(w, http.StatusNotFound, "User does not exist")
+		return
+	}
+	// -- end of JWT Validation --------------------------------------
+	// -- Authorization complete ---------------------------
+
+	// Redundant: Validate deletable 'chirp' exists in 'chirps' table in database:
+	// if UUID of chirp we delete exists in DB, then this passes. If doesn't, then HTTP Response {error: Chirp does not exist}
+	// Problem: Malicious attacker can still acquire the Chirp from database with spoofed Authorization Bearer ${Token}
+	chirp, err := cfg.db.GetChirp(req.Context(), deleteChirpUUID)
+	if err != nil {
+		_respondWithError(w, http.StatusNotFound, "Chirp does not exist")
+		return
+	}
+
+	// Problem SOLVED with conditional - even-if malicious attacker provides spoofed JWT (Auth Bearer Token), then from that token, we find userID of chirp.
+	if user.ID != chirp.UserID {
+		_respondWithError(w, http.StatusForbidden, "Cannot delete chirp if not author of it")
+		// below is commented row for debug. Essentially, if malicious attacker acquires JWT access token, they can delete successfully (JWT serves as login-token here)
+		//_respondWithError(w, http.StatusForbidden, fmt.Sprintf("invalid spoof attempt with JWT, cannot delete chirp if not author of it. user.ID=%v; chirp.UserID=%v;", user.ID, chirp.UserID))
+	}
+	// Delete chirp
+	err = cfg.db.DeleteChirp(req.Context(), database.DeleteChirpParams{
+		ID:     chirp.ID,
+		UserID: user.ID,
+	})
+	// Unknown when this is 'err' is caught (chirp.ID is validated with cfg.db.GetChirp, user.ID is validated with cfg.db.GetUser)
+	if err != nil {
+		_respondWithError(w, http.StatusForbidden, "")
+		return
+	}
+	// -- Verify that the provided 'Authorization: Bearer ${token}' is actually of chirp's author (chirp.UserID)
+	// user.ID is acquired from cfg.db.GetUser(..., userUUIDFromJWT)
+	// chirp.UserID is acquired from cfg.db.GetChirp (..., endpointPathVariable)
+
+	// happy path -- DELETED, then Return status code 204 (No Content to display)
+	_respondWithJSON(w, http.StatusNoContent, "")
+	return
+}
+
 func (cfg *apiConfig) handlerUpdateCredentials(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -566,7 +643,7 @@ func (cfg *apiConfig) handlerUpdateCredentials(w http.ResponseWriter, req *http.
 	}
 
 	// ----- Authorization - before any operation, Verify that: 'Logged-in' by JWT Access Token in HTTP Header--------
-	// Authorization: To update credentials, you must be logged-in, that is:
+	// Authorization: To delete chirp, you must be logged-in, that is:
 	// The HTTP Header will look like this:  ´Authorization: Bearer <token>´
 	tokenString, err := auth.GetBearerToken(req.Header)
 	if err != nil {
