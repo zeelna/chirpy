@@ -357,3 +357,65 @@ curl -X POST -i "http://localhost:8080/api/polka/webhooks" \
     -H "Content-Type: application/json" \
     -H "Authorization: ApiKey <todo: add_from_.env -> API_KEY  > " \
     -d '{"data": {"user_id": "239377db-b8e7-4d89-a28b-7a645556a82e"},"event": "user.upgraded" }'
+
+
+// CH9 L1: Documentation - QueryParameters
+
+// 1. Reset 'users'
+curl -X POST -i "http://localhost:8080/admin/reset"
+// 2. Create a new 'user'
+curl -X POST -i "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{ "email": "walt@breakingbad.com", "password": "123456"}'
+{"id":"bf97a7cf-d14e-457d-9c7a-cec548601c26"
+
+// 3. Login that 'user'
+curl -X POST -i "http://localhost:8080/api/login" -H "Content-Type: application/json" -d '{ "email": "walt@breakingbad.com", "password": "123456"}'
+
+//
+{"id":"d1276d39-72dd-4ffe-b24d-8fc72f36dac3","created_at":"2026-07-12T19:01:26.716976Z","updated_at":"2026-07-12T19:01:26.716976Z","email":"walt@breakingbad.com","is_chirpy_red":false,"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiZDEyNzZkMzktNzJkZC00ZmZlLWIyNGQtOGZjNzJmMzZkYWMzIiwiZXhwIjoxNzgzODc1NzE5LCJpYXQiOjE3ODM4NzIxMTl9.uz2fGtoDgS60xRUb83KRvxH-dlYzvsBp7XxphV20GU4"}
+// token
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiZDEyNzZkMzktNzJkZC00ZmZlLWIyNGQtOGZjNzJmMzZkYWMzIiwiZXhwIjoxNzgzODc1NzE5LCJpYXQiOjE3ODM4NzIxMTl9.uz2fGtoDgS60xRUb83KRvxH-dlYzvsBp7XxphV20GU4
+
+// 4. POST /api/chirps
+curl -X POST -i "http://localhost:8080/api/chirps" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiZDEyNzZkMzktNzJkZC00ZmZlLWIyNGQtOGZjNzJmMzZkYWMzIiwiZXhwIjoxNzgzODc1NzE5LCJpYXQiOjE3ODM4NzIxMTl9.uz2fGtoDgS60xRUb83KRvxH-dlYzvsBp7XxphV20GU4" \
+  -H "Content-Type: application/json" \
+  -d '{ "body": "I did it for me. I liked it. I was good at it. And I was really... I was alive." }'
+
+curl -X POST -i "http://localhost:8080/api/chirps" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiZDEyNzZkMzktNzJkZC00ZmZlLWIyNGQtOGZjNzJmMzZkYWMzIiwiZXhwIjoxNzgzODc1NzE5LCJpYXQiOjE3ODM4NzIxMTl9.uz2fGtoDgS60xRUb83KRvxH-dlYzvsBp7XxphV20GU4" \
+  -H "Content-Type: application/json" \
+  -d "{\"body\":\"I'm the one who knocks\"}"
+
+// 5. POST /api/chirps
+curl -X POST -i "http://localhost:8080/api/chirps" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiZDEyNzZkMzktNzJkZC00ZmZlLWIyNGQtOGZjNzJmMzZkYWMzIiwiZXhwIjoxNzgzODc1NzE5LCJpYXQiOjE3ODM4NzIxMTl9.uz2fGtoDgS60xRUb83KRvxH-dlYzvsBp7XxphV20GU4" \
+  -H "Content-Type: application/json" \
+  -d '{ "body": "Gale!" }'
+
+// 6  Create a new 'user'
+curl -X POST -i "http://localhost:8080/api/users" -H "Content-Type: application/json" -d '{ "email": "skyler@breakingbad.com", "password": "000111"}'
+
+// 7. Login
+curl -X POST -i "http://localhost:8080/api/login" -H "Content-Type: application/json" -d '{ "email": "skyler@breakingbad.com", "password": "000111"}'
+
+{"id":"160196dc-ee13-4196-9d20-677404fcac73","created_at":"2026-07-12T19:11:46.85837Z","updated_at":"2026-07-12T19:11:46.85837Z","email":"skyler@breakingbad.com","is_chirpy_red":false,"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiMTYwMTk2ZGMtZWUxMy00MTk2LTlkMjAtNjc3NDA0ZmNhYzczIiwiZXhwIjoxNzgzODc2MzUzLCJpYXQiOjE3ODM4NzI3NTN9.QECQFN7M8EGUtu5O05cfAPCFyW0ieKM9uG8fHXejkBY"}
+
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiMTYwMTk2ZGMtZWUxMy00MTk2LTlkMjAtNjc3NDA0ZmNhYzczIiwiZXhwIjoxNzgzODc2MzUzLCJpYXQiOjE3ODM4NzI3NTN9.QECQFN7M8EGUtu5O05cfAPCFyW0ieKM9uG8fHXejkBY"
+
+// 8. POST /api/chirps
+curl -X POST -i "http://localhost:8080/api/chirps" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHktYWNjZXNzIiwic3ViIjoiMTYwMTk2ZGMtZWUxMy00MTk2LTlkMjAtNjc3NDA0ZmNhYzczIiwiZXhwIjoxNzgzODc2MzUzLCJpYXQiOjE3ODM4NzI3NTN9.QECQFN7M8EGUtu5O05cfAPCFyW0ieKM9uG8fHXejkBY" \
+  -H "Content-Type: application/json" \
+  -d '{ "body": "Mr President..." }'
+
+// {"id":"5b407e66-f749-4f6b-ad1d-2e0e5afb45c7","created_at":"2026-07-12T19:14:39.017024Z","updated_at":"2026-07-12T19:14:39.017024Z","body":"Mr President...","user_id":"160196dc-ee13-4196-9d20-677404fcac73"}
+
+
+// 9 GET /api/chirps?author_id=${waltID}
+curl -X GET -i "http://localhost:8080/api/chirps?author_id=d1276d39-72dd-4ffe-b24d-8fc72f36dac3" \
+  -H "Content-Type: application/json" >> walt.txt
+
+
+// 10 GET /api/chirps?author_id=${skylerID}
+curl -X GET -i "http://localhost:8080/api/chirps?author_id=160196dc-ee13-4196-9d20-677404fcac73" \
+  -H "Content-Type: application/json" >> skyler.txt
