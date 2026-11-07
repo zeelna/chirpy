@@ -10,7 +10,7 @@ VALUES (
        )
 RETURNING *;
 
--- name: CheckRefreshToken :one
+-- name: GetRefreshToken :one
 SELECT * FROM refresh_tokens WHERE token = $1
     AND refresh_tokens.revoked_at IS NULL
     AND refresh_tokens.expires_at > NOW();
@@ -24,7 +24,8 @@ FROM users
       AND refresh_tokens.revoked_at IS NULL
       AND refresh_tokens.expires_at > NOW();
 
--- name: RevokeRefreshToken :exec
+-- name: RevokeRefreshToken :one
 UPDATE refresh_tokens
 SET revoked_at = NOW(), updated_at = NOW()
-WHERE token = $1;
+WHERE token = $1
+RETURNING *;

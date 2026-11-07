@@ -372,6 +372,8 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, req *http.Request) {
 	return
 }
 
+// Before 7th Nov 2026. Commented out to complete CH6:Authentication, L9: Refresh and Revoke
+
 func (cfg *apiConfig) handlerRefreshToken(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -437,8 +439,9 @@ func (cfg *apiConfig) handlerRevokeToken(w http.ResponseWriter, req *http.Reques
 	} // If it does not exist, return a 401 Unauthorized response.
 
 	// ! Lookup refresh token in db, if exists then revoke it -> revoked_at = NOW(), updated_at = NOW()
-	if err := cfg.db.RevokeRefreshToken(req.Context(), refreshToken.Token); err != nil {
-		_respondWithError(w, http.StatusUnauthorized, "Invalid refresh token")
+	_, err = cfg.db.RevokeRefreshToken(req.Context(), refreshToken.Token)
+	if err != nil {
+		_respondWithError(w, http.StatusInternalServerError, "Couldn't revoke session")
 		return
 	}
 
